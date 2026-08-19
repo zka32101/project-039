@@ -5,25 +5,40 @@ rules_version = '2';
 // `firebase emulators:exec` 等での実検証は行えていない。デプロイ前に必ずローカル/CIで検証すること。
 //
 // 設計方針:
-//  - RoadSegment / shadeSpots / brightnessSpots は誰でも閲覧可（地図表示に必要）
+//  - RoadSegment(道路網ジオメトリ含む) / shadeSpots / brightnessSpots は誰でも閲覧可（地図表示に必要）
 //  - 投稿の作成は匿名認証済みユーザーであれば可能（本人確認は次スプリントで別途ゲート）
-//  - status/votes等の集計フィールドはクライアントから直接更新不可（Cloud Functions経由のみ）
+//  - status/moderationStatus等のモデレーション結果フィールドは、作成時は常に'pending'固定を要求し、
+//    'approved'/'rejected'への遷移はCloud Functions（Admin SDK、本ルールの制約を受けない）のみが行う
+//    （クライアントが自己承認できてしまう抜け道を塞ぐ）
 //  - 本人確認情報（未実装のverifications等）はクライアントから一切アクセス不可
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 道路網ジオメトリ・スコア（Cloud Functionsのシード/バッチ処理のみが書き込む）
+    match /roadNodes/{nodeId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /roadWays/{wayId} {
+      allow read: if true;
+      allow write: if false;
+    }
     match /roadSegments/{segmentId} {
       allow read: if true;
-      allow write: if false; // 影スコアの事前計算バッチ(Cloud Functions)のみが書き込む
+      allow write: if false; // baseShadowScore(バッチ)・aggregated*Score(モデレーション承認時)ともにCloud Functionsのみ
+    }
+    match /buildings/{buildingId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     match /shadeSpots/{spotId} {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
-        && request.resource.data.status in ['pending', 'approved']
+        && request.resource.data.status == 'pending'
         && request.resource.data.type in ['tree', 'arcade', 'rain_shelter'];
-      // 承認状態・投票数の変更はCloud Functions（モデレーション）のみが行う
+      // 'pending'→'approved'等の遷移・投票数の変更はCloud Functions（モデレーション）のみが行う
       allow update, delete: if false;
     }
 
@@ -31,7 +46,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
-        && request.resource.data.status in ['pending', 'approved']
+        && request.resource.data.status == 'pending'
         && request.resource.data.brightnessLevel in ['dark', 'normal', 'bright'];
       allow update, delete: if false;
     }
@@ -39,9 +54,18 @@ service cloud.firestore {
     match /spotComments/{commentId} {
       allow read: if true;
       // 本人確認済みユーザーのみコメント可という設計要件は、
-      // 本人確認基盤の実装後にcustom claim等で判定する（現状は認証済みなら作成可の暫定ルール）
-      allow create: if request.auth != null && request.resource.data.submitterId == request.auth.uid;
+      // 本人確認基盤の実装後にcustom claim等で判定する（現状は認証済みなら作成可の暫定ルール）。
+      // moderationStatusもNGワード判定前提のため作成時は常に'pending'固定。
+      allow create: if request.auth != null
+        && request.resource.data.submitterId == request.auth.uid
+        && request.resource.data.moderationStatus == 'pending';
       allow update, delete: if false;
+    }
+
+    // モデレーション設定（地域別の反映モード等）。運用者のみが管理コンソール等で更新する想定
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // 本人確認情報は別コレクションに分離し、クライアントからは一切アクセスさせない

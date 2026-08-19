@@ -13,6 +13,12 @@ import '../services/spot_submission_service.dart';
 ///   brightnessSpots { roadSegmentId, brightnessLevel, submitterId, status, createdAt }
 ///   spotComments    { spotId, submitterId, text, moderationStatus, createdAt }
 ///
+/// 【重要】status/moderationStatusは常に'pending'で作成する。実際の承認可否（即時反映/承認待ち）は
+/// クライアントを信用せずCloud Functions側（functions/index.js の onShadeSpotCreated等）が判定し、
+/// 'approved'へ更新する。firestore.rulesもクライアントによる'approved'での作成を拒否する設計。
+/// ここで`ModerationConfig`から求める`reflectMode`は、Cloud Functionsも同じ設定を参照して
+/// 判定するため「実際にどうなるかの見込み」をUIへ即座に伝えるためのものであり、権限の根拠ではない。
+///
 /// スナップ処理・即時反映時のローカルグラフ更新は`LocalSpotSubmissionService`と同じロジックを使う
 /// （投稿直後のホーム画面表示を待たせないための楽観的更新。恒久的な集計はCloud Functions側で行う）。
 class FirestoreSpotSubmissionService implements SpotSubmissionService {
@@ -44,7 +50,6 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
     final moderationConfig = _moderationConfigProvider();
     final reflectMode =
         moderationConfig.autoApproveAnonymous ? ReflectMode.immediate : ReflectMode.pendingApproval;
-    final status = reflectMode == ReflectMode.immediate ? 'approved' : 'pending';
 
     DocumentReference<Map<String, dynamic>> spotRef;
     if (type == SpotType.brightness) {
@@ -54,7 +59,7 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
         'roadSegmentId': snap.edgeId,
         'brightnessLevel': 'dark',
         'submitterId': submitterId,
-        'status': status,
+        'status': 'pending', // Cloud Functions側で承認可否を判定し更新する
         'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
@@ -63,7 +68,7 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
         'type': _shadeSpotTypeName(type),
         'timeDependent': type.isTimeDependent,
         'submitterId': submitterId,
-        'status': status,
+        'status': 'pending', // Cloud Functions側で承認可否を判定し更新する
         'createdAt': FieldValue.serverTimestamp(),
         'votes': 0,
       });
@@ -74,7 +79,7 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
         'spotId': spotRef.id,
         'submitterId': submitterId,
         'text': comment,
-        'moderationStatus': 'pending', // NGワードフィルタ・モデレーションはCloud Functions側（次スプリント）
+        'moderationStatus': 'pending', // NGワードフィルタ判定はCloud Functions側（onSpotCommentCreated）
         'createdAt': FieldValue.serverTimestamp(),
       });
     }

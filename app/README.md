@@ -44,6 +44,11 @@
   4. `purchases_flutter`の`purchasePackage`戻り値の型はSDKバージョンで変わるため、
      `flutter pub get`後に`lib/purchases/revenuecat_subscription_service.dart`のコメント箇所を
      必ず確認すること
+- **Cloud Functions（`../functions/`）も同様に実接続・実デプロイの確認ができていない**。
+  Firebase接続済みでも、`../functions/README.md`の手順（`npm install`→デプロイ→
+  `npm run seed`でのFirestoreへのデータ投入）を済ませないと`RemoteRouteSearchService`は
+  `not-found`等のエラーを返す（道路網データが無いため）。ホーム画面はエラー表示＋リトライで
+  対応するため、未セットアップでもアプリはクラッシュしない
 
 ## このセッションで実装した範囲
 
@@ -77,6 +82,17 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - RevenueCat: `SubscriptionService`（インターフェース＋オンデバイスのデモ購入実装＋
     `RevenueCatSubscriptionService`）の二本立て。未接続時は端末内フラグでの疑似購入で
     ペイウォール〜プレミアム機能解放までのフローを一通り確認できる
+- [x] Cloud Functions（`../functions/`）: 設計書のfunctions/ディレクトリ構成
+  （routeSearch/shadowCalc/moderation）を実装。prototype/で技術検証したロジックをそのまま移植
+  - `searchRoute`（Callable）: Firestore上の道路網データからグラフを構築し経路探索。
+    Firebase接続時は`RemoteRouteSearchService`がこちらを呼び出す
+    （オンデバイス版`LocalRouteSearchService`は開発時・未接続時のフォールバック）
+  - `shadowCalcBatch`（3時間毎スケジュール）: 建物×太陽角度から`baseShadowScore`を再計算
+  - `onShadeSpotCreated`等（Firestoreトリガー）: 投稿のモデレーション判定を**クライアントを
+    信用せずサーバー側で行う**よう変更（`firestore.rules`もクライアントによる自己承認を拒否する
+    ルールへ更新済み）。承認時は道路区間の集計スコアも更新
+  - `onSpotCommentCreated`: コメントのNGワードフィルタ（プレースホルダー辞書）
+  - 詳細は`../functions/README.md`参照
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -84,16 +100,17 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   「本人確認済みとして投稿（デモ用）」は手動トグルで分岐のみ再現しており、
   実際の本人確認（電話番号確認等）とcustom claim連携は未実装
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
-- **Cloud Functions**（経路探索・影スコアバッチ・モデレーション判定の本番実装）— 現状の
-  経路探索・投稿反映はすべてオンデバイス（またはFirestore書き込みのみ）で完結しており、
-  サーバー側の重み付け合算バッチは未実装
 - 実際のプッシュ通知配信基盤（FCM等）— 設定画面のトグルは値の保存のみ
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
-- **Firebase/RevenueCat実接続の検証** — このセッションはネットワークアクセスが無いため、
-  `flutterfire configure`・RevenueCatダッシュボード連携・実プロジェクトへの疎通・
-  Firestoreルールのデプロイ検証はいずれも未実施。ローカル環境での検証が必須（上記セットアップ手順参照）
+- **Firebase/RevenueCat/Cloud Functions実接続の検証** — このセッションはネットワークアクセスが
+  無いため、`flutterfire configure`・RevenueCatダッシュボード連携・実プロジェクトへの疎通・
+  Firestoreルールのデプロイ・Cloud Functionsのデプロイ/シード投入はいずれも未実施。
+  ローカル環境での検証が必須（上記セットアップ手順・`../functions/README.md`参照）
+- 経路探索の実データ・実スケールでの再検証 — `prototype/RESULTS.md`は49ノードの合成データでの
+  結果に過ぎず、`searchRoute`/`shadowCalcBatch`とも実データ規模（数万〜数十万エッジ）での
+  レスポンスタイム・空間インデックスの要否は未検証
 
 ## ディレクトリ構成
 
@@ -120,6 +137,7 @@ lib/
     firebase_analytics_service.dart
     firebase_auth_service.dart
     firebase_remote_config_service.dart
+    firebase_route_search_service.dart  // Cloud Functions(searchRoute)呼び出し
     firebase_spot_submission_service.dart
     firebase_options.dart            // .gitignore済み。各自 `flutterfire configure` 等で生成
   purchases/           // RevenueCat接続時に上記インターフェースへ差し込む実装群
@@ -146,7 +164,10 @@ test/
   subscription_state_test.dart  // SubscriptionStateのunit test
   paywall_view_test.dart        // ペイウォールのwidget test
   settings_view_test.dart       // 設定画面のwidget test
+  firebase_route_search_service_test.dart // Cloud Functionsレスポンス変換のunit test
 ```
+
+Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。
 
 ## 実行方法（ローカル環境・Flutter SDKインストール後）
 
