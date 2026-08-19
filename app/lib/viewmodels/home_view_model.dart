@@ -15,16 +15,27 @@ class HomeLocationUnavailable extends HomeState {
 }
 
 class HomeReady extends HomeState {
-  const HomeReady({required this.route, required this.currentLat, required this.currentLon});
+  const HomeReady({
+    required this.route,
+    required this.currentLat,
+    required this.currentLon,
+    required this.isOptimizedRouteEnabled,
+  });
   final RouteResult route;
   final double currentLat;
   final double currentLon;
+
+  /// 「詳細ルート最適化」（プレミアム機能）が有効かどうか。
+  final bool isOptimizedRouteEnabled;
 }
 
 class HomeError extends HomeState {
   const HomeError(this.message);
   final String message;
 }
+
+const _defaultShadeWeight = 0.6;
+const _optimizedShadeWeight = 0.85;
 
 /// ホーム画面のViewModel。Aha Momentの核である
 /// 「現在地周辺の安心ルート即表示」を担当する。
@@ -34,6 +45,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   final Ref _ref;
+  bool _optimizedRouteEnabled = false;
+  ({double lat, double lon})? _lastPosition;
 
   Future<void> _load() async {
     state = const HomeLoading();
@@ -53,24 +66,45 @@ class HomeViewModel extends StateNotifier<HomeState> {
       state = const HomeLocationUnavailable();
       return;
     }
+    _lastPosition = position;
 
     try {
       final route = await routeService.searchNearbyComfortRoute(
         currentLat: position.lat,
         currentLon: position.lon,
+        shadeWeight: _optimizedRouteEnabled ? _optimizedShadeWeight : _defaultShadeWeight,
       );
       if (route == null) {
         state = const HomeError('付近に安心ルートを見つけられませんでした');
         return;
       }
       analytics.logRouteSearched();
-      state = HomeReady(route: route, currentLat: position.lat, currentLon: position.lon);
+      state = HomeReady(
+        route: route,
+        currentLat: position.lat,
+        currentLon: position.lon,
+        isOptimizedRouteEnabled: _optimizedRouteEnabled,
+      );
     } catch (e) {
       state = HomeError('ルート検索に失敗しました: $e');
     }
   }
 
   Future<void> retry() => _load();
+
+  /// 「詳細ルート最適化」トグル。プレミアム未契約の場合は何もせず`false`を返す
+  /// （呼び出し元＝HomeViewでペイウォールへ誘導する）。
+  Future<bool> setOptimizedRouteEnabled(bool enabled) async {
+    if (enabled) {
+      final status = await _ref.read(subscriptionServiceProvider).getStatus();
+      if (!status.isPremium) return false;
+    }
+    _optimizedRouteEnabled = enabled;
+    if (_lastPosition != null) {
+      await _load();
+    }
+    return true;
+  }
 }
 
 final homeViewModelProvider = StateNotifierProvider.autoDispose<HomeViewModel, HomeState>(
