@@ -20,6 +20,7 @@ class HomeReady extends HomeState {
     required this.currentLat,
     required this.currentLon,
     required this.isOptimizedRouteEnabled,
+    required this.hasCustomDestination,
   });
   final RouteResult route;
   final double currentLat;
@@ -27,6 +28,10 @@ class HomeReady extends HomeState {
 
   /// 「詳細ルート最適化」（プレミアム機能）が有効かどうか。
   final bool isOptimizedRouteEnabled;
+
+  /// ユーザーが「目的地を選ぶ」で明示的に指定した目的地かどうか
+  /// （falseの場合はAha Moment用のデモ目的地が使われている）。
+  final bool hasCustomDestination;
 }
 
 class HomeError extends HomeState {
@@ -47,6 +52,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   final Ref _ref;
   bool _optimizedRouteEnabled = false;
   ({double lat, double lon})? _lastPosition;
+  ({double lat, double lon})? _destination;
 
   Future<void> _load() async {
     state = const HomeLoading();
@@ -69,10 +75,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
     _lastPosition = position;
 
     try {
+      final destination = _destination;
       final route = await routeService.searchNearbyComfortRoute(
         currentLat: position.lat,
         currentLon: position.lon,
         shadeWeight: _optimizedRouteEnabled ? _optimizedShadeWeight : _defaultShadeWeight,
+        destLat: destination?.lat,
+        destLon: destination?.lon,
       );
       if (route == null) {
         state = const HomeError('付近に安心ルートを見つけられませんでした');
@@ -84,6 +93,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         currentLat: position.lat,
         currentLon: position.lon,
         isOptimizedRouteEnabled: _optimizedRouteEnabled,
+        hasCustomDestination: destination != null,
       );
     } catch (e) {
       state = HomeError('ルート検索に失敗しました: $e');
@@ -91,6 +101,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   Future<void> retry() => _load();
+
+  /// 「目的地を選ぶ」（`DestinationPickerView`）で選択された座標に切り替え、再検索する。
+  Future<void> setDestination(double lat, double lon) async {
+    _destination = (lat: lat, lon: lon);
+    await _load();
+  }
+
+  /// 目的地指定を解除し、Aha Moment用のデモ目的地に戻す。
+  Future<void> clearDestination() async {
+    _destination = null;
+    await _load();
+  }
 
   /// 「詳細ルート最適化」トグル。プレミアム未契約の場合は何もせず`false`を返す
   /// （呼び出し元＝HomeViewでペイウォールへ誘導する）。

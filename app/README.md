@@ -103,6 +103,11 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - `spotComments`の作成は`isVerifiedUser()`ルールでゲート（設計書「本人確認済みユーザーのみ
     コメント投稿可」を実際に強制）
   - 未接続時は`LocalVerificationService`が固定デモコード（`123456`）で確認フローを模擬
+- [x] 目的地入力画面（設計書「[目的地入力] → ルート検索結果」）: `DestinationPickerView`で
+  道路網の模式図をタップして目的地を選択。`RouteSearchService.searchNearbyComfortRoute()`に
+  `destLat`/`destLon`を追加し、Local/Remote両実装で選択座標を使うよう変更
+  （未選択時はAha Moment用のデモ目的地のまま。ホーム画面に「目的地を選ぶ」「自動提案に戻す」を追加）
+  - 住所・地名検索（Geocoding API）は未実装。実地図タイル差し替え時に合わせて検討
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -157,11 +162,12 @@ lib/
   viewmodels/        // Riverpod providers（Firebase/RevenueCat有無で実装を自動切替）, HomeViewModel
   views/
     onboarding/      // オンボーディング(3枚)
-    home/            // ホーム（安心ルート表示、詳細ルート最適化トグル）
+    home/            // ホーム（安心ルート表示、詳細ルート最適化トグル、目的地選択導線）
     paint/           // 投稿フロー（種別選択→ペイント→確認→完了）
     settings/        // 設定（アカウント/通知/サブスク管理/反映モード表示）
     paywall/         // ペイウォール（詳細ルート最適化・オフライン地図利用時にトリガー）
     verification/    // 本人確認（電話番号SMS認証の2ステップフロー）
+    destination/     // 目的地入力（道路網の模式図をタップして選択）
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
   widgets/           // PrimaryButton（二度押し防止）
@@ -179,6 +185,7 @@ test/
   firebase_route_search_service_test.dart // Cloud Functionsレスポンス変換のunit test
   verification_service_test.dart      // 本人確認(デモ実装)のunit test
   phone_verification_view_test.dart   // 本人確認画面のwidget test
+  destination_picker_view_test.dart   // 目的地入力画面のwidget test
 ```
 
 Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。

@@ -4,6 +4,7 @@ import '../../models/route_result.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
 import '../../widgets/primary_button.dart';
+import '../destination/destination_picker_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
 import '../settings/settings_view.dart';
@@ -51,12 +52,19 @@ class HomeView extends ConsumerWidget {
               message: message,
               onRetry: () => ref.read(homeViewModelProvider.notifier).retry(),
             ),
-          HomeReady(:final route, :final currentLat, :final currentLon, :final isOptimizedRouteEnabled) =>
+          HomeReady(
+            :final route,
+            :final currentLat,
+            :final currentLon,
+            :final isOptimizedRouteEnabled,
+            :final hasCustomDestination,
+          ) =>
             _ReadyView(
               route: route,
               currentLat: currentLat,
               currentLon: currentLon,
               isOptimizedRouteEnabled: isOptimizedRouteEnabled,
+              hasCustomDestination: hasCustomDestination,
             ),
         },
       ),
@@ -158,12 +166,22 @@ class _ReadyView extends ConsumerWidget {
     required this.currentLat,
     required this.currentLon,
     required this.isOptimizedRouteEnabled,
+    required this.hasCustomDestination,
   });
 
   final RouteResult route;
   final double currentLat;
   final double currentLon;
   final bool isOptimizedRouteEnabled;
+  final bool hasCustomDestination;
+
+  Future<void> _pickDestination(BuildContext context, WidgetRef ref) async {
+    final selected = await Navigator.of(context).push<({double lat, double lon})>(
+      MaterialPageRoute(builder: (_) => const DestinationPickerView()),
+    );
+    if (selected == null) return;
+    await ref.read(homeViewModelProvider.notifier).setDestination(selected.lat, selected.lon);
+  }
 
   Future<void> _handleOptimizedToggle(BuildContext context, WidgetRef ref, bool enabled) async {
     final applied = await ref.read(homeViewModelProvider.notifier).setOptimizedRouteEnabled(enabled);
@@ -186,9 +204,32 @@ class _ReadyView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('近くの安心ルート', style: Theme.of(context).textTheme.titleLarge),
+          Text(hasCustomDestination ? '選んだ目的地までの安心ルート' : '近くの安心ルート', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 4),
-          const Text('現在地周辺で見つかった、日陰や明るさに配慮したルートです'),
+          Text(
+            hasCustomDestination
+                ? '選んだ目的地までの、日陰や明るさに配慮したルートです'
+                : '現在地周辺で見つかった、日陰や明るさに配慮したルートです',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickDestination(context, ref),
+                  icon: const Icon(Icons.place_outlined),
+                  label: const Text('目的地を選ぶ'),
+                ),
+              ),
+              if (hasCustomDestination) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => ref.read(homeViewModelProvider.notifier).clearDestination(),
+                  child: const Text('自動提案に戻す'),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 16),
           SchematicMapView(route: route, currentLat: currentLat, currentLon: currentLon),
           const SizedBox(height: 16),

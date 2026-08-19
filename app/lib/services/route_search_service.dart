@@ -12,16 +12,21 @@ abstract class RouteSearchService {
   /// [shadeWeight] は距離(0)と安心スコア(1)のどちらを優先するかの重み。
   /// 「詳細ルート最適化」（プレミアム機能・設計書Step2のペイウォールトリガー対象）を
   /// 有効にした場合、通常より高い値を渡して日陰・明るさをより強く優先させる。
+  ///
+  /// [destLat]/[destLon] は「目的地入力」画面（`DestinationPickerView`）でユーザーが
+  /// 選んだ座標。未指定の場合はAha Moment用のデモ目的地（実装依存）を使う。
   Future<RouteResult?> searchNearbyComfortRoute({
     required double currentLat,
     required double currentLon,
     double shadeWeight = 0.6,
+    double? destLat,
+    double? destLon,
   });
 }
 
 /// オンデバイス版実装。共有の`RoadNetworkRepository`から道路網グラフを取得し、
-/// 現在地に最も近いノードから、データセット内で最も「安心」な行き先ノードへの
-/// ルートを即座に計算する。ホーム画面初回表示のAha Momentに使う。
+/// 現在地に最も近いノードから、指定された（または自動選定した）目的地ノードへの
+/// ルートを計算する。
 class LocalRouteSearchService implements RouteSearchService {
   LocalRouteSearchService(this._repository);
 
@@ -32,15 +37,19 @@ class LocalRouteSearchService implements RouteSearchService {
     required double currentLat,
     required double currentLon,
     double shadeWeight = 0.6,
+    double? destLat,
+    double? destLon,
   }) async {
     final graph = await _repository.loadGraph();
     if (graph.nodeById.isEmpty) return null;
 
     final originId = _nearestNodeId(graph, currentLat, currentLon);
 
-    // デモ用の目的地選定: 起点から最も離れたノード（=一番「歩きがいのある」区間を提示する）。
-    // 本番実装では「目的地入力」画面からの入力に置き換える。
-    final destId = _farthestNodeId(graph, originId);
+    final destId = (destLat != null && destLon != null)
+        ? _nearestNodeId(graph, destLat, destLon)
+        // デモ用の目的地選定（目的地未指定時のAha Moment用）: 起点から最も離れたノード
+        // （=一番「歩きがいのある」区間を提示する）。
+        : _farthestNodeId(graph, originId);
 
     return engine.searchRoute(
       graph: graph,

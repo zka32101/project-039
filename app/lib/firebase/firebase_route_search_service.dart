@@ -17,20 +17,24 @@ class RemoteRouteSearchService implements RouteSearchService {
     required double currentLat,
     required double currentLon,
     double shadeWeight = 0.6,
+    double? destLat,
+    double? destLon,
   }) async {
     final callable = _functions.httpsCallable('searchRoute');
+
+    // 目的地未指定時（Aha Moment初回表示）はデモ用に近傍のオフセット先を渡す。
+    // サーバー側（Cloud Functions）は「起点から最も離れたノード」のような自動選定ロジックを
+    // 持たないため、実際の目的地は`DestinationPickerView`からの座標を必須とする設計。
+    final effectiveDestLat = destLat ?? currentLat + 0.01;
+    final effectiveDestLon = destLon ?? currentLon + 0.01;
 
     final HttpsCallableResult result;
     try {
       result = await callable.call({
         'originLat': currentLat,
         'originLon': currentLon,
-        // デモ用の目的地選定（実装順序上、目的地入力画面は次スプリント）:
-        // サーバー側で「起点から最も離れたノード」を選ぶロジックはCloud Functions側には無いため、
-        // 暫定的に起点からごく近い固定オフセット先を目的地として渡す。
-        // 本番は「目的地入力」画面からの座標をそのまま渡す形になる。
-        'destLat': currentLat + 0.01,
-        'destLon': currentLon + 0.01,
+        'destLat': effectiveDestLat,
+        'destLon': effectiveDestLon,
         'shadeWeight': shadeWeight,
       });
     } on FirebaseFunctionsException catch (e) {
