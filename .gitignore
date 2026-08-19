@@ -7,6 +7,9 @@ app/ios/
 app/.packages
 app/pubspec.lock
 
+# Firebase: プロジェクト固有の値を含むため各自の `flutterfire configure` で生成する
+app/lib/firebase/firebase_options.dart
+
 # Node
 prototype/node_modules/
 

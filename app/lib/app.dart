@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'services/app_version.dart';
 import 'services/onboarding_storage.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/providers.dart';
 import 'views/home/home_view.dart';
 import 'views/onboarding/onboarding_view.dart';
+import 'views/update_required/update_required_view.dart';
 
 class AnshinmichiApp extends ConsumerWidget {
   const AnshinmichiApp({super.key});
@@ -20,6 +22,7 @@ class AnshinmichiApp extends ConsumerWidget {
       initialRoute: '/',
       routes: {
         '/': (_) => const _StartupGate(),
+        '/update-required': (_) => const UpdateRequiredView(),
         '/onboarding': (_) => const OnboardingView(),
         '/home': (_) => const HomeView(),
       },
@@ -45,6 +48,13 @@ class _StartupGateState extends ConsumerState<_StartupGate> {
   }
 
   Future<void> _decideRoute() async {
+    final remoteConfig = ref.read(remoteConfigServiceProvider);
+    if (isUpdateRequired(current: currentAppVersion, minSupported: remoteConfig.minSupportedVersion)) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed('/update-required');
+      return;
+    }
+
     final OnboardingStorage storage = ref.read(onboardingStorageProvider);
     final completed = await storage.isCompleted();
     if (!mounted) return;

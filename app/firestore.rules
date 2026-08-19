@@ -1,0 +1,53 @@
+rules_version = '2';
+
+// あんしんみち Firestoreセキュリティルール（ドラフト）。
+// 【重要】このセッションはFirebaseプロジェクトへのネットワークアクセスが無いため、
+// `firebase emulators:exec` 等での実検証は行えていない。デプロイ前に必ずローカル/CIで検証すること。
+//
+// 設計方針:
+//  - RoadSegment / shadeSpots / brightnessSpots は誰でも閲覧可（地図表示に必要）
+//  - 投稿の作成は匿名認証済みユーザーであれば可能（本人確認は次スプリントで別途ゲート）
+//  - status/votes等の集計フィールドはクライアントから直接更新不可（Cloud Functions経由のみ）
+//  - 本人確認情報（未実装のverifications等）はクライアントから一切アクセス不可
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /roadSegments/{segmentId} {
+      allow read: if true;
+      allow write: if false; // 影スコアの事前計算バッチ(Cloud Functions)のみが書き込む
+    }
+
+    match /shadeSpots/{spotId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.submitterId == request.auth.uid
+        && request.resource.data.status in ['pending', 'approved']
+        && request.resource.data.type in ['tree', 'arcade', 'rain_shelter'];
+      // 承認状態・投票数の変更はCloud Functions（モデレーション）のみが行う
+      allow update, delete: if false;
+    }
+
+    match /brightnessSpots/{spotId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.submitterId == request.auth.uid
+        && request.resource.data.status in ['pending', 'approved']
+        && request.resource.data.brightnessLevel in ['dark', 'normal', 'bright'];
+      allow update, delete: if false;
+    }
+
+    match /spotComments/{commentId} {
+      allow read: if true;
+      // 本人確認済みユーザーのみコメント可という設計要件は、
+      // 本人確認基盤の実装後にcustom claim等で判定する（現状は認証済みなら作成可の暫定ルール）
+      allow create: if request.auth != null && request.resource.data.submitterId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // 本人確認情報は別コレクションに分離し、クライアントからは一切アクセスさせない
+    // （モデレーション業務のCloud Functions/管理コンソールからのみアクセス）
+    match /userVerifications/{uid} {
+      allow read, write: if false;
+    }
+  }
+}

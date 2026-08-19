@@ -1,10 +1,24 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../firebase/firebase_analytics_service.dart';
+import '../firebase/firebase_auth_service.dart';
+import '../firebase/firebase_remote_config_service.dart';
+import '../firebase/firebase_spot_submission_service.dart';
 import '../services/analytics_service.dart';
+import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/onboarding_storage.dart';
+import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_submission_service.dart';
+
+/// Firebase初期化の成否。`main.dart`で`ProviderScope`の`overrides`に実際の値を渡す
+/// （デフォルトのfalseはテスト実行時等、上書きされない場合のフォールバック）。
+final firebaseAvailableProvider = Provider<bool>((ref) => false);
 
 final locationServiceProvider = Provider<LocationService>((ref) => LocationService());
 
@@ -14,10 +28,40 @@ final routeSearchServiceProvider = Provider<RouteSearchService>(
   (ref) => LocalRouteSearchService(ref.watch(roadNetworkRepositoryProvider)),
 );
 
-final spotSubmissionServiceProvider = Provider<SpotSubmissionService>(
-  (ref) => LocalSpotSubmissionService(ref.watch(roadNetworkRepositoryProvider)),
-);
+final authServiceProvider = Provider<AuthService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirebaseAuthAdapter(FirebaseAuth.instance)
+      : LocalAuthService();
+});
 
-final analyticsServiceProvider = Provider<AnalyticsService>((ref) => DebugAnalyticsService());
+final remoteConfigServiceProvider = Provider<RemoteConfigService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirebaseRemoteConfigAdapter(FirebaseRemoteConfig.instance)
+      : LocalRemoteConfigService();
+});
+
+final spotSubmissionServiceProvider = Provider<SpotSubmissionService>((ref) {
+  final repository = ref.watch(roadNetworkRepositoryProvider);
+  final remoteConfig = ref.watch(remoteConfigServiceProvider);
+
+  if (ref.watch(firebaseAvailableProvider)) {
+    return FirestoreSpotSubmissionService(
+      FirebaseFirestore.instance,
+      repository,
+      ref.watch(authServiceProvider),
+      moderationConfigProvider: () => remoteConfig.moderationConfig,
+    );
+  }
+  return LocalSpotSubmissionService(
+    repository,
+    moderationConfigProvider: () => remoteConfig.moderationConfig,
+  );
+});
+
+final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirebaseAnalyticsAdapter(FirebaseAnalytics.instance)
+      : DebugAnalyticsService();
+});
 
 final onboardingStorageProvider = Provider<OnboardingStorage>((ref) => OnboardingStorage());
