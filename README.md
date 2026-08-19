@@ -15,7 +15,8 @@
   Firebase接続（Firestore/Auth/Analytics/Crashlytics/Remote Config、未接続時は自動フォールバック）、
   設定・ペイウォール画面（RevenueCat接続、未接続時はデモ購入へ自動フォールバック）、
   Cloud Functions連携（経路探索は`RemoteRouteSearchService`経由でサーバー側実行）、
-  本人確認基盤（電話番号SMS認証、`isVerifiedUser()`でコメント投稿をゲート）を実装。
+  本人確認基盤（電話番号SMS認証、`isVerifiedUser()`でコメント投稿をゲート）、
+  目的地入力画面（道路網の模式図をタップして選択）を実装。
   詳細・セットアップ上の注意点は `app/README.md` を参照。
 
 ## 現在の状況（完了した範囲）
@@ -24,7 +25,7 @@
    （小規模データでは実用速度を確認。実データでのスケーラビリティは未検証、要再検証）
 2. Flutterアプリの雛形・Aha Moment動線・投稿フロー（ペイントUI）・Firebase接続・
    設定/ペイウォール画面（RevenueCat接続）・Cloud Functions（経路探索・影スコアバッチ・
-   モデレーション）・本人確認基盤（電話番号SMS認証）を実装
+   モデレーション）・本人確認基盤（電話番号SMS認証）・目的地入力画面を実装
    （このセッションの実行環境にFlutter SDK・Firebase/RevenueCat/Firebase CLIへの
    ネットワークアクセスが無いため、ビルド・実機確認・実接続確認・実デプロイは未実施。要ローカル検証）
 
