@@ -12,6 +12,7 @@ app/lib/firebase/firebase_options.dart
 
 # Node
 prototype/node_modules/
+functions/node_modules/
 
 # OS
 .DS_Store
