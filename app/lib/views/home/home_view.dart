@@ -5,6 +5,8 @@ import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
 import '../../widgets/primary_button.dart';
 import '../paint/paint_submission_view.dart';
+import '../paywall/paywall_view.dart';
+import '../settings/settings_view.dart';
 import 'widgets/schematic_map_view.dart';
 
 /// Aha Momentの中心画面。「現在地周辺の安心ルート即表示」。
@@ -16,7 +18,18 @@ class HomeView extends ConsumerWidget {
     final state = ref.watch(homeViewModelProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('あんしんみち')),
+      appBar: AppBar(
+        title: const Text('あんしんみち'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '設定',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsView()),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await Navigator.of(context).push(
@@ -38,10 +51,12 @@ class HomeView extends ConsumerWidget {
               message: message,
               onRetry: () => ref.read(homeViewModelProvider.notifier).retry(),
             ),
-          HomeReady(:final route, :final currentLat, :final currentLon) => _ReadyView(
+          HomeReady(:final route, :final currentLat, :final currentLon, :final isOptimizedRouteEnabled) =>
+            _ReadyView(
               route: route,
               currentLat: currentLat,
               currentLon: currentLon,
+              isOptimizedRouteEnabled: isOptimizedRouteEnabled,
             ),
         },
       ),
@@ -137,15 +152,34 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-class _ReadyView extends StatelessWidget {
-  const _ReadyView({required this.route, required this.currentLat, required this.currentLon});
+class _ReadyView extends ConsumerWidget {
+  const _ReadyView({
+    required this.route,
+    required this.currentLat,
+    required this.currentLon,
+    required this.isOptimizedRouteEnabled,
+  });
 
   final RouteResult route;
   final double currentLat;
   final double currentLon;
+  final bool isOptimizedRouteEnabled;
+
+  Future<void> _handleOptimizedToggle(BuildContext context, WidgetRef ref, bool enabled) async {
+    final applied = await ref.read(homeViewModelProvider.notifier).setOptimizedRouteEnabled(enabled);
+    if (applied || !enabled) return;
+    if (!context.mounted) return;
+    // プレミアム未契約でONにしようとした場合はペイウォールへ誘導する
+    // （設計書「Aha Moment直後ではなく、詳細ルート最適化利用時にトリガー」）
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PaywallView(triggerLabel: '詳細ルート最適化')),
+    );
+    // 購入完了していれば再度トグルをONにする
+    await ref.read(homeViewModelProvider.notifier).setOptimizedRouteEnabled(true);
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final comfortPercent = (route.averageComfortScore * 100).round();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -169,6 +203,15 @@ class _ReadyView extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.workspace_premium_outlined),
+            title: const Text('詳細ルート最適化'),
+            subtitle: const Text('日陰・明るさをより強く優先します（プレミアム機能）'),
+            value: isOptimizedRouteEnabled,
+            onChanged: (value) => _handleOptimizedToggle(context, ref, value),
           ),
         ],
       ),

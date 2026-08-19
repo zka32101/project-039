@@ -9,9 +9,13 @@ import 'road_network_repository.dart';
 /// 同一インターフェースを満たす形にした。Cloud Functions実装後は
 /// `RemoteRouteSearchService`（HTTP/Callable Functions呼び出し）に差し替える。
 abstract class RouteSearchService {
+  /// [shadeWeight] は距離(0)と安心スコア(1)のどちらを優先するかの重み。
+  /// 「詳細ルート最適化」（プレミアム機能・設計書Step2のペイウォールトリガー対象）を
+  /// 有効にした場合、通常より高い値を渡して日陰・明るさをより強く優先させる。
   Future<RouteResult?> searchNearbyComfortRoute({
     required double currentLat,
     required double currentLon,
+    double shadeWeight = 0.6,
   });
 }
 
@@ -27,6 +31,7 @@ class LocalRouteSearchService implements RouteSearchService {
   Future<RouteResult?> searchNearbyComfortRoute({
     required double currentLat,
     required double currentLon,
+    double shadeWeight = 0.6,
   }) async {
     final graph = await _repository.loadGraph();
     if (graph.nodeById.isEmpty) return null;
@@ -37,7 +42,12 @@ class LocalRouteSearchService implements RouteSearchService {
     // 本番実装では「目的地入力」画面からの入力に置き換える。
     final destId = _farthestNodeId(graph, originId);
 
-    return engine.searchRoute(graph: graph, originNodeId: originId, destNodeId: destId, shadeWeight: 0.6);
+    return engine.searchRoute(
+      graph: graph,
+      originNodeId: originId,
+      destNodeId: destId,
+      shadeWeight: shadeWeight,
+    );
   }
 
   String _nearestNodeId(RoadGraph graph, double lat, double lon) {

@@ -7,18 +7,24 @@ import '../firebase/firebase_analytics_service.dart';
 import '../firebase/firebase_auth_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
+import '../purchases/revenuecat_subscription_service.dart';
 import '../services/analytics_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
+import '../services/notification_preference_storage.dart';
 import '../services/onboarding_storage.dart';
 import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_submission_service.dart';
+import '../services/subscription_service.dart';
 
 /// Firebase初期化の成否。`main.dart`で`ProviderScope`の`overrides`に実際の値を渡す
 /// （デフォルトのfalseはテスト実行時等、上書きされない場合のフォールバック）。
 final firebaseAvailableProvider = Provider<bool>((ref) => false);
+
+/// RevenueCat初期化の成否。Firebaseとは独立した課金基盤のため別フラグで管理する。
+final purchasesAvailableProvider = Provider<bool>((ref) => false);
 
 final locationServiceProvider = Provider<LocationService>((ref) => LocationService());
 
@@ -65,3 +71,12 @@ final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
 });
 
 final onboardingStorageProvider = Provider<OnboardingStorage>((ref) => OnboardingStorage());
+
+final subscriptionServiceProvider = Provider<SubscriptionService>((ref) {
+  return ref.watch(purchasesAvailableProvider)
+      ? RevenueCatSubscriptionService()
+      : LocalSubscriptionService();
+});
+
+final notificationPreferenceStorageProvider =
+    Provider<NotificationPreferenceStorage>((ref) => NotificationPreferenceStorage());

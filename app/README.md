@@ -33,6 +33,17 @@
      `route_default_shade_weight` / `min_supported_version`
   - Firebase未接続・初期化失敗時は自動的にオンデバイス実装（Local*Service群）へフォールバックし、
     アプリはクラッシュせず動作を続ける設計にしている（`main.dart` 参照）
+- **RevenueCat接続も同様に実接続確認ができていない**（RevenueCatダッシュボードへのネットワークアクセスが
+  無いため）。ローカルで以下を実施すること:
+  1. RevenueCatダッシュボードでプロジェクトを作成し、App Store Connect/Google Play Consoleと連携
+  2. 「premium」エンタイトルメントと紐づくProductを設定（`lib/purchases/revenuecat_subscription_service.dart`
+     の`_entitlementId`参照）
+  3. iOS/AndroidそれぞれのPublic API Keyを取得し、`flutter run --dart-define=REVENUECAT_IOS_API_KEY=xxx
+     --dart-define=REVENUECAT_ANDROID_API_KEY=xxx` のように起動時に注入する
+     （キー未設定時は自動的に`LocalSubscriptionService`＝端末内デモ購入へフォールバックする）
+  4. `purchases_flutter`の`purchasePackage`戻り値の型はSDKバージョンで変わるため、
+     `flutter pub get`後に`lib/purchases/revenuecat_subscription_service.dart`のコメント箇所を
+     必ず確認すること
 
 ## このセッションで実装した範囲
 
@@ -56,6 +67,16 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - [x] 投稿フロー（ペイントUI）: 種別選択 → 指でなぞる → 道路区間へ自動スナップ → 確認
   → [デモ用トグルで本人確認済み扱いにするとコメント入力可] → 投稿完了（確定演出）→
   反映モードにより「即時反映」「承認待ち」を表示分岐
+- [x] 設定画面（アカウント／通知／サブスク管理／反映モード表示）とペイウォール:
+  - アカウント: 匿名ユーザーID表示（本人確認状態は「未確認」固定表示。フロー自体は次スプリント）
+  - 通知: お知らせ受信トグル（実際のプッシュ配信基盤=FCM等は未実装、設定値の永続化のみ）
+  - サブスク管理: 現在のプラン表示、ペイウォールへの導線
+  - 反映モード表示: `ModerationConfig`に基づき「即時反映」「承認待ち」を表示
+  - ペイウォール: 設計書「Aha Moment直後ではなくトリガー」に従い、ホーム画面の
+    「詳細ルート最適化」トグルON時のみ表示（Aha動線・投稿動線には挟まない）
+  - RevenueCat: `SubscriptionService`（インターフェース＋オンデバイスのデモ購入実装＋
+    `RevenueCatSubscriptionService`）の二本立て。未接続時は端末内フラグでの疑似購入で
+    ペイウォール〜プレミアム機能解放までのフローを一通り確認できる
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -66,12 +87,13 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - **Cloud Functions**（経路探索・影スコアバッチ・モデレーション判定の本番実装）— 現状の
   経路探索・投稿反映はすべてオンデバイス（またはFirestore書き込みのみ）で完結しており、
   サーバー側の重み付け合算バッチは未実装
-- RevenueCat（サブスク・ペイウォール）
+- 実際のプッシュ通知配信基盤（FCM等）— 設定画面のトグルは値の保存のみ
+- オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
-- **Firebase実接続の検証** — このセッションはFirebaseコンソール・CLIへのネットワークアクセスが
-  無いため、`flutterfire configure`・実プロジェクトへの疎通・Firestoreルールのデプロイ検証は
-  いずれも未実施。ローカル環境での検証が必須（上記セットアップ手順参照）
+- **Firebase/RevenueCat実接続の検証** — このセッションはネットワークアクセスが無いため、
+  `flutterfire configure`・RevenueCatダッシュボード連携・実プロジェクトへの疎通・
+  Firestoreルールのデプロイ検証はいずれも未実施。ローカル環境での検証が必須（上記セットアップ手順参照）
 
 ## ディレクトリ構成
 
@@ -88,6 +110,8 @@ lib/
     remote_config_service.dart   // インターフェース＋固定デフォルト値のフォールバック
     map_projection.dart          // 緯度経度⇔画面座標の変換（ホーム表示／投稿キャンバス共通）
     app_version.dart             // min_supported_version比較ロジック
+    subscription_service.dart    // インターフェース＋オンデバイスのデモ購入フォールバック
+    notification_preference_storage.dart
     location_service.dart
     analytics_service.dart
     onboarding_storage.dart
@@ -98,11 +122,16 @@ lib/
     firebase_remote_config_service.dart
     firebase_spot_submission_service.dart
     firebase_options.dart            // .gitignore済み。各自 `flutterfire configure` 等で生成
-  viewmodels/        // Riverpod providers（Firebase有無で実装を自動切替）, HomeViewModel
+  purchases/           // RevenueCat接続時に上記インターフェースへ差し込む実装群
+    purchases_bootstrap.dart         // 起動時初期化＋APIキー未設定時フォールバック
+    revenuecat_subscription_service.dart
+  viewmodels/        // Riverpod providers（Firebase/RevenueCat有無で実装を自動切替）, HomeViewModel
   views/
     onboarding/      // オンボーディング(3枚)
-    home/            // ホーム（安心ルート表示）
+    home/            // ホーム（安心ルート表示、詳細ルート最適化トグル）
     paint/           // 投稿フロー（種別選択→ペイント→確認→完了）
+    settings/        // 設定（アカウント/通知/サブスク管理/反映モード表示）
+    paywall/         // ペイウォール（詳細ルート最適化・オフライン地図利用時にトリガー）
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
   widgets/           // PrimaryButton（二度押し防止）
@@ -114,6 +143,9 @@ test/
   onboarding_view_test.dart     // オンボーディングのwidget test
   spot_type_selector_test.dart  // 投稿種別選択のwidget test
   app_version_test.dart         // min_supported_version比較のunit test
+  subscription_state_test.dart  // SubscriptionStateのunit test
+  paywall_view_test.dart        // ペイウォールのwidget test
+  settings_view_test.dart       // 設定画面のwidget test
 ```
 
 ## 実行方法（ローカル環境・Flutter SDKインストール後）
