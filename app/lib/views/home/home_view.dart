@@ -4,6 +4,7 @@ import '../../models/route_result.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
 import '../../widgets/primary_button.dart';
+import '../announcements/announcements_list_view.dart';
 import '../destination/destination_picker_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
@@ -22,6 +23,13 @@ class HomeView extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('あんしんみち'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.campaign_outlined),
+            tooltip: 'お知らせ',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '設定',

@@ -22,10 +22,11 @@
   無いため）。ローカルで以下を実施すること:
   1. Firebaseコンソールでプロジェクトを作成し、Firestore/Auth(匿名認証・電話番号認証の両方を
      有効化。電話番号認証は`syncVerificationStatus`経由の本人確認フローに必須)/Analytics/
-     Crashlytics/Remote Configを有効化
+     Crashlytics/Remote Config/Cloud Messagingを有効化
   2. Android: `android/app/google-services.json` を配置
-     iOS: `ios/Runner/GoogleService-Info.plist` を配置
-     （詳細は `lib/firebase/firebase_bootstrap.dart` のコメント参照）
+     iOS: `ios/Runner/GoogleService-Info.plist` を配置＋APNs認証キーをFirebaseコンソールに登録
+     （プッシュ通知はiOSではAPNs連携が別途必須。詳細は `lib/firebase/firebase_bootstrap.dart` の
+     コメント参照）
   3. `firestore.rules` をFirebaseプロジェクトへデプロイ（**未検証のドラフト**。
      `firebase emulators:exec` 等でのローカル検証を推奨）
   4. Remote Configに以下のキーを設定（`lib/firebase/firebase_remote_config_service.dart` 参照。
@@ -108,13 +109,25 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   `destLat`/`destLon`を追加し、Local/Remote両実装で選択座標を使うよう変更
   （未選択時はAha Moment用のデモ目的地のまま。ホーム画面に「目的地を選ぶ」「自動提案に戻す」を追加）
   - 住所・地名検索（Geocoding API）は未実装。実地図タイル差し替え時に合わせて検討
+- [x] プッシュ通知配信基盤（FCM）とお知らせ機能（設計書Step7）:
+  `PushNotificationService`（インターフェース＋Firebase未接続時のno-op実装＋
+  `FirebasePushNotificationService`）の二本立て
+  - トピック購読方式（`announcements`）を採用。設定画面の「お知らせを受け取る」トグルが
+    そのまま購読/解除に対応し、個々のデバイストークンをサーバー側で管理する必要が無い
+  - Cloud Functions `onAnnouncementCreated`: `announcements`コレクションへのドキュメント作成
+    （運営が管理コンソール等から作成する想定。クライアントは作成不可）をトリガーに
+    トピック購読者へFCM配信
+  - `AnnouncementsListView`: Firestoreの`announcements`を新着順に一覧表示。
+    ホーム画面AppBar・設定画面の両方から遷移可能
+  - フォアグラウンド受信時のアプリ内バナー表示（flutter_local_notifications等）は未実装。
+    バックグラウンド/終了時の通知表示はFCM標準動作に任せている
 
 ## このセッションで実装していない範囲（次スプリント）
 
 - 本人確認のcustom claim化（現状はFirestoreの`users/{uid}.isVerified`を都度読みに行く方式。
   頻繁に参照する場合はcustom claimへ載せ替えを検討）
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
-- 実際のプッシュ通知配信基盤（FCM等）— 設定画面のトグルは値の保存のみ
+- フォアグラウンド受信時のアプリ内通知バナー表示（flutter_local_notifications等）
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
@@ -130,7 +143,7 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 ```
 lib/
-  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile
+  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile, Announcement
   services/
     road_graph_engine/  // prototype/ の検証済みロジックのDart移植
                         // (geo/sunPosition/graph/shadowScore/routeSearch/snapToRoad)
@@ -140,6 +153,8 @@ lib/
     auth_service.dart            // インターフェース＋オンデバイスの匿名ID発行フォールバック
     verification_service.dart    // インターフェース＋オンデバイスのデモ確認コードフォールバック
     remote_config_service.dart   // インターフェース＋固定デフォルト値のフォールバック
+    push_notification_service.dart // インターフェース＋Firebase未接続時のno-opフォールバック
+    announcement_service.dart      // インターフェース＋Firebase未接続時は空リストを返すフォールバック
     map_projection.dart          // 緯度経度⇔画面座標の変換（ホーム表示／投稿キャンバス共通）
     app_version.dart             // min_supported_version比較ロジック
     subscription_service.dart    // インターフェース＋オンデバイスのデモ購入フォールバック
@@ -155,6 +170,8 @@ lib/
     firebase_route_search_service.dart  // Cloud Functions(searchRoute)呼び出し
     firebase_spot_submission_service.dart
     firebase_verification_service.dart  // 電話番号SMS認証＋Cloud Functions(syncVerificationStatus)呼び出し
+    firebase_push_notification_service.dart // announcementsトピックの購読/解除
+    firebase_announcement_service.dart      // Firestoreのannouncementsコレクション読み取り
     firebase_options.dart            // .gitignore済み。各自 `flutterfire configure` 等で生成
   purchases/           // RevenueCat接続時に上記インターフェースへ差し込む実装群
     purchases_bootstrap.dart         // 起動時初期化＋APIキー未設定時フォールバック
@@ -168,6 +185,7 @@ lib/
     paywall/         // ペイウォール（詳細ルート最適化・オフライン地図利用時にトリガー）
     verification/    // 本人確認（電話番号SMS認証の2ステップフロー）
     destination/     // 目的地入力（道路網の模式図をタップして選択）
+    announcements/   // お知らせ一覧
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
   widgets/           // PrimaryButton（二度押し防止）
@@ -186,6 +204,7 @@ test/
   verification_service_test.dart      // 本人確認(デモ実装)のunit test
   phone_verification_view_test.dart   // 本人確認画面のwidget test
   destination_picker_view_test.dart   // 目的地入力画面のwidget test
+  announcements_list_view_test.dart   // お知らせ一覧のwidget test
 ```
 
 Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。

@@ -2,20 +2,25 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../firebase/firebase_analytics_service.dart';
+import '../firebase/firebase_announcement_service.dart';
 import '../firebase/firebase_auth_service.dart';
+import '../firebase/firebase_push_notification_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
 import '../firebase/firebase_verification_service.dart';
 import '../purchases/revenuecat_subscription_service.dart';
 import '../services/analytics_service.dart';
+import '../services/announcement_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_preference_storage.dart';
 import '../services/onboarding_storage.dart';
+import '../services/push_notification_service.dart';
 import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
@@ -91,4 +96,16 @@ final verificationServiceProvider = Provider<VerificationService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirebaseVerificationService(FirebaseAuth.instance, FirebaseFirestore.instance, FirebaseFunctions.instance)
       : LocalVerificationService();
+});
+
+final pushNotificationServiceProvider = Provider<PushNotificationService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirebasePushNotificationService(FirebaseMessaging.instance)
+      : LocalPushNotificationService();
+});
+
+final announcementServiceProvider = Provider<AnnouncementService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreAnnouncementService(FirebaseFirestore.instance)
+      : LocalAnnouncementService();
 });
