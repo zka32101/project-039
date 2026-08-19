@@ -3,6 +3,7 @@ import 'package:anshinmichi/models/road_segment.dart';
 import 'package:anshinmichi/services/road_graph_engine/geo.dart';
 import 'package:anshinmichi/services/road_graph_engine/graph.dart';
 import 'package:anshinmichi/services/road_graph_engine/route_search.dart';
+import 'package:anshinmichi/services/road_graph_engine/snap_to_road.dart';
 import 'package:anshinmichi/services/road_graph_engine/sun_position.dart';
 
 void main() {
@@ -53,6 +54,42 @@ void main() {
       final graph = makeLinearGraph();
       final result = searchRoute(graph: graph, originNodeId: 'A', destNodeId: 'Z');
       expect(result, isNull);
+    });
+  });
+
+  group('snapToRoad', () {
+    RoadGraph makeGraph() {
+      return RoadGraph.build(
+        nodes: const [
+          RoadNode(id: 'A', lat: 35.0000, lon: 139.0000),
+          RoadNode(id: 'B', lat: 35.0010, lon: 139.0000), // Aから約111m北
+        ],
+        roads: [(id: 'r1', name: null, nodeIds: ['A', 'B'])],
+      );
+    }
+
+    test('道路にほぼ沿った軌跡は正しい区間にスナップされる', () {
+      final graph = makeGraph();
+      final trace = [
+        (lat: 35.0002, lon: 139.00002),
+        (lat: 35.0005, lon: 139.00003),
+        (lat: 35.0008, lon: 139.00001),
+      ];
+      final result = snapTraceToRoad(trace, graph);
+      expect(result, isNotNull);
+      expect(result!.edgeId, graph.edgeById.keys.first);
+    });
+
+    test('道路から極端に離れた軌跡はnullを返す', () {
+      final graph = makeGraph();
+      final trace = [(lat: 35.5, lon: 139.5), (lat: 35.5, lon: 139.5001)];
+      final result = snapTraceToRoad(trace, graph, maxSnapDistanceM: 30);
+      expect(result, isNull);
+    });
+
+    test('空の軌跡はnullを返す', () {
+      final graph = makeGraph();
+      expect(snapTraceToRoad([], graph), isNull);
     });
   });
 }

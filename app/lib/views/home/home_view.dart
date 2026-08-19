@@ -4,6 +4,7 @@ import '../../models/route_result.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
 import '../../widgets/primary_button.dart';
+import '../paint/paint_submission_view.dart';
 import 'widgets/schematic_map_view.dart';
 
 /// Aha Momentの中心画面。「現在地周辺の安心ルート即表示」。
@@ -17,10 +18,12 @@ class HomeView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('あんしんみち')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('投稿フローは次のスプリントで実装予定です')),
+        onPressed: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PaintSubmissionView()),
           );
+          // 投稿によって安心スコアが変わっている可能性があるため、ホームのルートを再計算する
+          ref.read(homeViewModelProvider.notifier).retry();
         },
         icon: const Icon(Icons.brush_outlined),
         label: const Text('塗って投稿'),
