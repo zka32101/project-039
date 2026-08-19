@@ -20,7 +20,8 @@
     （常時位置情報は不要な設計のため `NSLocationAlwaysUsageDescription` は不要）
 - **Firebase接続も同様に実接続確認ができていない**（Firebaseコンソール・CLIへのネットワークアクセスが
   無いため）。ローカルで以下を実施すること:
-  1. Firebaseコンソールでプロジェクトを作成し、Firestore/Auth(匿名認証を有効化)/Analytics/
+  1. Firebaseコンソールでプロジェクトを作成し、Firestore/Auth(匿名認証・電話番号認証の両方を
+     有効化。電話番号認証は`syncVerificationStatus`経由の本人確認フローに必須)/Analytics/
      Crashlytics/Remote Configを有効化
   2. Android: `android/app/google-services.json` を配置
      iOS: `ios/Runner/GoogleService-Info.plist` を配置
@@ -62,7 +63,7 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   自動的にオンデバイス実装へフォールバック（未接続環境でもクラッシュしない設計）
   - Firestore: 投稿を`shadeSpots`/`brightnessSpots`/`spotComments`コレクションへ永続化
     （`FirestoreSpotSubmissionService`）。セキュリティルールのドラフトは`firestore.rules`
-  - Auth: 匿名認証（`FirebaseAuthAdapter`）。本人確認フロー自体は未実装
+  - Auth: 匿名認証（`FirebaseAuthAdapter`）
   - Analytics: KPI5イベントをFirebase Analyticsへ送信（`FirebaseAnalyticsAdapter`）
   - Crashlytics: 未捕捉例外の転送を`main.dart`起動時に設定
   - Remote Config: `ModerationConfig`・経路探索の重み・`min_supported_version`を配信
@@ -70,10 +71,10 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - [x] ViewModel/状態管理（Riverpod, `HomeViewModel`。投稿フローは画面ローカルの状態機械）
 - [x] Aha Moment動線: 起動 → オンボーディング(3枚) → 位置情報許可 → ホーム（安心ルート即表示）
 - [x] 投稿フロー（ペイントUI）: 種別選択 → 指でなぞる → 道路区間へ自動スナップ → 確認
-  → [デモ用トグルで本人確認済み扱いにするとコメント入力可] → 投稿完了（確定演出）→
+  → [本人確認済みユーザーのみ] コメント入力可 → 投稿完了（確定演出）→
   反映モードにより「即時反映」「承認待ち」を表示分岐
 - [x] 設定画面（アカウント／通知／サブスク管理／反映モード表示）とペイウォール:
-  - アカウント: 匿名ユーザーID表示（本人確認状態は「未確認」固定表示。フロー自体は次スプリント）
+  - アカウント: 本人確認状態（確認済み/未確認）と匿名ユーザーID表示。未確認時は本人確認へ導線
   - 通知: お知らせ受信トグル（実際のプッシュ配信基盤=FCM等は未実装、設定値の永続化のみ）
   - サブスク管理: 現在のプラン表示、ペイウォールへの導線
   - 反映モード表示: `ModerationConfig`に基づき「即時反映」「承認待ち」を表示
@@ -93,12 +94,20 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     ルールへ更新済み）。承認時は道路区間の集計スコアも更新
   - `onSpotCommentCreated`: コメントのNGワードフィルタ（プレースホルダー辞書）
   - 詳細は`../functions/README.md`参照
+- [x] 本人確認基盤（電話番号SMS認証）: `VerificationService`（インターフェース＋
+  Firebase未接続時のデモ実装＋`FirebaseVerificationService`）の二本立て
+  - `PhoneVerificationView`: 電話番号入力→SMSコード確認の2ステップ
+  - Firebase Authの匿名アカウントへ電話番号クレデンシャルをリンク（uidは維持したまま昇格）し、
+    Cloud Functions `syncVerificationStatus` がID Tokenの`phone_number`クレームを検証したうえで
+    `users/{uid}.isVerified`を更新（クライアントは直接書き込めない。`firestore.rules`参照）
+  - `spotComments`の作成は`isVerifiedUser()`ルールでゲート（設計書「本人確認済みユーザーのみ
+    コメント投稿可」を実際に強制）
+  - 未接続時は`LocalVerificationService`が固定デモコード（`123456`）で確認フローを模擬
 
 ## このセッションで実装していない範囲（次スプリント）
 
-- **本人確認基盤（本物の確認フロー）** — Authは匿名認証のみ実装済み。投稿画面の
-  「本人確認済みとして投稿（デモ用）」は手動トグルで分岐のみ再現しており、
-  実際の本人確認（電話番号確認等）とcustom claim連携は未実装
+- 本人確認のcustom claim化（現状はFirestoreの`users/{uid}.isVerified`を都度読みに行く方式。
+  頻繁に参照する場合はcustom claimへ載せ替えを検討）
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
 - 実際のプッシュ通知配信基盤（FCM等）— 設定画面のトグルは値の保存のみ
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
@@ -116,7 +125,7 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 ```
 lib/
-  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig
+  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile
   services/
     road_graph_engine/  // prototype/ の検証済みロジックのDart移植
                         // (geo/sunPosition/graph/shadowScore/routeSearch/snapToRoad)
@@ -124,6 +133,7 @@ lib/
     route_search_service.dart    // インターフェース＋オンデバイス実装（Cloud Functions版に後で差し替え）
     spot_submission_service.dart // インターフェース＋オンデバイス実装（道路スナップ＋反映モード判定）
     auth_service.dart            // インターフェース＋オンデバイスの匿名ID発行フォールバック
+    verification_service.dart    // インターフェース＋オンデバイスのデモ確認コードフォールバック
     remote_config_service.dart   // インターフェース＋固定デフォルト値のフォールバック
     map_projection.dart          // 緯度経度⇔画面座標の変換（ホーム表示／投稿キャンバス共通）
     app_version.dart             // min_supported_version比較ロジック
@@ -139,6 +149,7 @@ lib/
     firebase_remote_config_service.dart
     firebase_route_search_service.dart  // Cloud Functions(searchRoute)呼び出し
     firebase_spot_submission_service.dart
+    firebase_verification_service.dart  // 電話番号SMS認証＋Cloud Functions(syncVerificationStatus)呼び出し
     firebase_options.dart            // .gitignore済み。各自 `flutterfire configure` 等で生成
   purchases/           // RevenueCat接続時に上記インターフェースへ差し込む実装群
     purchases_bootstrap.dart         // 起動時初期化＋APIキー未設定時フォールバック
@@ -150,6 +161,7 @@ lib/
     paint/           // 投稿フロー（種別選択→ペイント→確認→完了）
     settings/        // 設定（アカウント/通知/サブスク管理/反映モード表示）
     paywall/         // ペイウォール（詳細ルート最適化・オフライン地図利用時にトリガー）
+    verification/    // 本人確認（電話番号SMS認証の2ステップフロー）
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
   widgets/           // PrimaryButton（二度押し防止）
@@ -165,6 +177,8 @@ test/
   paywall_view_test.dart        // ペイウォールのwidget test
   settings_view_test.dart       // 設定画面のwidget test
   firebase_route_search_service_test.dart // Cloud Functionsレスポンス変換のunit test
+  verification_service_test.dart      // 本人確認(デモ実装)のunit test
+  phone_verification_view_test.dart   // 本人確認画面のwidget test
 ```
 
 Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。

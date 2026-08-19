@@ -3,11 +3,13 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/spot_submission.dart';
 import '../../models/spot_type.dart';
+import '../../models/user_profile.dart';
 import '../../services/road_graph_engine/graph.dart';
 import '../../services/road_graph_engine/snap_to_road.dart';
 import '../../services/spot_submission_service.dart';
 import '../../viewmodels/providers.dart';
 import '../../widgets/primary_button.dart';
+import '../verification/phone_verification_view.dart';
 import 'widgets/paint_canvas.dart';
 import 'widgets/spot_type_selector.dart';
 
@@ -31,16 +33,27 @@ class _PaintSubmissionViewState extends ConsumerState<PaintSubmissionView> {
   List<({double lat, double lon})>? _lastTrace;
   ReflectMode? _resultReflectMode;
   String? _errorMessage;
-
-  // 本人確認基盤は未実装（次スプリント）。デモとして手動トグルで
-  // 「本人確認済みユーザーのみコメント投稿可」の分岐だけ再現する。
-  bool _isVerifiedDemo = false;
+  UserProfile _profile = UserProfile.unverified;
   final _commentController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadGraph();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await ref.read(verificationServiceProvider).getProfile();
+    if (!mounted) return;
+    setState(() => _profile = profile);
+  }
+
+  Future<void> _openVerification() async {
+    final verified = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const PhoneVerificationView()),
+    );
+    if (verified == true) await _loadProfile();
   }
 
   @override
@@ -102,7 +115,7 @@ class _PaintSubmissionViewState extends ConsumerState<PaintSubmissionView> {
     });
 
     try {
-      final comment = _isVerifiedDemo && _commentController.text.trim().isNotEmpty
+      final comment = _profile.isVerified && _commentController.text.trim().isNotEmpty
           ? _commentController.text.trim()
           : null;
       final result = await ref.read(spotSubmissionServiceProvider).submitSpot(
@@ -159,9 +172,9 @@ class _PaintSubmissionViewState extends ConsumerState<PaintSubmissionView> {
                 graph: _graph!,
                 type: _selectedType!,
                 snappedEdgeId: _snappedEdgeId!,
-                isVerifiedDemo: _isVerifiedDemo,
+                profile: _profile,
                 commentController: _commentController,
-                onToggleVerified: (v) => setState(() => _isVerifiedDemo = v),
+                onOpenVerification: _openVerification,
                 onRetry: _backToDrawing,
                 onConfirm: _confirmSubmit,
               ),
@@ -241,9 +254,9 @@ class _ConfirmingStep extends StatelessWidget {
     required this.graph,
     required this.type,
     required this.snappedEdgeId,
-    required this.isVerifiedDemo,
+    required this.profile,
     required this.commentController,
-    required this.onToggleVerified,
+    required this.onOpenVerification,
     required this.onRetry,
     required this.onConfirm,
   });
@@ -251,9 +264,9 @@ class _ConfirmingStep extends StatelessWidget {
   final RoadGraph graph;
   final SpotType type;
   final String snappedEdgeId;
-  final bool isVerifiedDemo;
+  final UserProfile profile;
   final TextEditingController commentController;
-  final ValueChanged<bool> onToggleVerified;
+  final Future<void> Function() onOpenVerification;
   final VoidCallback onRetry;
   final Future<void> Function() onConfirm;
 
@@ -273,15 +286,7 @@ class _ConfirmingStep extends StatelessWidget {
           const SizedBox(height: 16),
           PaintCanvas(graph: graph, spotType: type, highlightEdgeId: snappedEdgeId, onTraceEnd: (_) {}),
           const SizedBox(height: 16),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: isVerifiedDemo,
-            onChanged: onToggleVerified,
-            title: const Text('本人確認済みとして投稿（デモ用）'),
-            subtitle: const Text('本人確認済みユーザーのみコメントを追加できます'),
-          ),
-          if (isVerifiedDemo) ...[
-            const SizedBox(height: 8),
+          if (profile.isVerified) ...[
             TextField(
               controller: commentController,
               maxLength: 140,
@@ -289,6 +294,14 @@ class _ConfirmingStep extends StatelessWidget {
                 labelText: 'コメント（任意）',
                 border: OutlineInputBorder(),
               ),
+            ),
+          ] else ...[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('本人確認をするとコメントを追加できます'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onOpenVerification,
             ),
           ],
           const SizedBox(height: 8),
