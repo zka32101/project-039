@@ -1,0 +1,26 @@
+name: anshinmichi
+description: "あんしんみち — 影・雨よけ・夜の明るさをみんなで塗って共有する、安心して歩ける道の地図アプリ"
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  geolocator: ^12.0.0
+  shared_preferences: ^2.2.3
+  cupertino_icons: ^1.0.8
+  collection: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sample_road_network.json
