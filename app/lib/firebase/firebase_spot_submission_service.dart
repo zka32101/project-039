@@ -1,0 +1,103 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/moderation_config.dart';
+import '../models/spot_submission.dart';
+import '../models/spot_type.dart';
+import '../services/auth_service.dart';
+import '../services/road_graph_engine/snap_to_road.dart';
+import '../services/road_network_repository.dart';
+import '../services/spot_submission_service.dart';
+
+/// Firestoreへ実際に投稿を永続化する実装。
+/// コレクション構成は設計書Step3のデータモデルに準拠:
+///   shadeSpots      { roadSegmentId, type, timeDependent, submitterId, status, createdAt, votes }
+///   brightnessSpots { roadSegmentId, brightnessLevel, submitterId, status, createdAt }
+///   spotComments    { spotId, submitterId, text, moderationStatus, createdAt }
+///
+/// スナップ処理・即時反映時のローカルグラフ更新は`LocalSpotSubmissionService`と同じロジックを使う
+/// （投稿直後のホーム画面表示を待たせないための楽観的更新。恒久的な集計はCloud Functions側で行う）。
+class FirestoreSpotSubmissionService implements SpotSubmissionService {
+  FirestoreSpotSubmissionService(
+    this._firestore,
+    this._repository,
+    this._authService, {
+    ModerationConfig Function()? moderationConfigProvider,
+  }) : _moderationConfigProvider = moderationConfigProvider ?? (() => ModerationConfig.defaultConfig);
+
+  final FirebaseFirestore _firestore;
+  final RoadNetworkRepository _repository;
+  final AuthService _authService;
+  final ModerationConfig Function() _moderationConfigProvider;
+
+  @override
+  Future<SpotSubmissionResult> submitSpot({
+    required List<({double lat, double lon})> trace,
+    required SpotType type,
+    String? comment,
+  }) async {
+    final graph = await _repository.loadGraph();
+    final snap = snapTraceToRoad(trace, graph);
+    if (snap == null) {
+      throw SpotSubmissionException('道路の近くをなぞってください（道路から離れすぎています）');
+    }
+
+    final submitterId = await _authService.ensureSignedIn();
+    final moderationConfig = _moderationConfigProvider();
+    final reflectMode =
+        moderationConfig.autoApproveAnonymous ? ReflectMode.immediate : ReflectMode.pendingApproval;
+    final status = reflectMode == ReflectMode.immediate ? 'approved' : 'pending';
+
+    DocumentReference<Map<String, dynamic>> spotRef;
+    if (type == SpotType.brightness) {
+      // UIはまだ明るさレベル(dark/normal/bright)の選択に対応していないため、
+      // 「暗いので投稿する」という最も典型的な利用動機を想定し暫定的に'dark'固定とする（次スプリントで選択UI追加）。
+      spotRef = await _firestore.collection('brightnessSpots').add({
+        'roadSegmentId': snap.edgeId,
+        'brightnessLevel': 'dark',
+        'submitterId': submitterId,
+        'status': status,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      spotRef = await _firestore.collection('shadeSpots').add({
+        'roadSegmentId': snap.edgeId,
+        'type': _shadeSpotTypeName(type),
+        'timeDependent': type.isTimeDependent,
+        'submitterId': submitterId,
+        'status': status,
+        'createdAt': FieldValue.serverTimestamp(),
+        'votes': 0,
+      });
+    }
+
+    if (comment != null && comment.isNotEmpty) {
+      await _firestore.collection('spotComments').add({
+        'spotId': spotRef.id,
+        'submitterId': submitterId,
+        'text': comment,
+        'moderationStatus': 'pending', // NGワードフィルタ・モデレーションはCloud Functions側（次スプリント）
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    if (reflectMode == ReflectMode.immediate) {
+      final edge = graph.edgeById[snap.edgeId]!;
+      final delta = type == SpotType.brightness ? 0.0 : 1.0;
+      edge.shadowScore = ((edge.shadowScore + delta) / 2).clamp(0, 1);
+    }
+
+    return SpotSubmissionResult(reflectMode: reflectMode, roadSegmentId: snap.edgeId);
+  }
+
+  String _shadeSpotTypeName(SpotType type) {
+    switch (type) {
+      case SpotType.tree:
+        return 'tree';
+      case SpotType.arcade:
+        return 'arcade';
+      case SpotType.rainShelter:
+        return 'rain_shelter';
+      case SpotType.brightness:
+        throw ArgumentError('brightnessはbrightnessSpotsコレクションで扱う');
+    }
+  }
+}

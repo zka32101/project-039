@@ -28,11 +28,11 @@ abstract class SpotSubmissionService {
 class LocalSpotSubmissionService implements SpotSubmissionService {
   LocalSpotSubmissionService(
     this._repository, {
-    this.moderationConfig = ModerationConfig.defaultConfig,
-  });
+    ModerationConfig Function()? moderationConfigProvider,
+  }) : _moderationConfigProvider = moderationConfigProvider ?? (() => ModerationConfig.defaultConfig);
 
   final RoadNetworkRepository _repository;
-  final ModerationConfig moderationConfig;
+  final ModerationConfig Function() _moderationConfigProvider;
 
   @override
   Future<SpotSubmissionResult> submitSpot({
@@ -46,7 +46,7 @@ class LocalSpotSubmissionService implements SpotSubmissionService {
       throw SpotSubmissionException('道路の近くをなぞってください（道路から離れすぎています）');
     }
 
-    final reflectMode = moderationConfig.autoApproveAnonymous
+    final reflectMode = _moderationConfigProvider().autoApproveAnonymous
         ? ReflectMode.immediate
         : ReflectMode.pendingApproval;
 
