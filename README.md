@@ -14,7 +14,8 @@
   投稿フロー（種別選択→ペイント→道路スナップ→投稿完了）、
   Firebase接続（Firestore/Auth/Analytics/Crashlytics/Remote Config、未接続時は自動フォールバック）、
   設定・ペイウォール画面（RevenueCat接続、未接続時はデモ購入へ自動フォールバック）、
-  Cloud Functions連携（経路探索は`RemoteRouteSearchService`経由でサーバー側実行）を実装。
+  Cloud Functions連携（経路探索は`RemoteRouteSearchService`経由でサーバー側実行）、
+  本人確認基盤（電話番号SMS認証、`isVerifiedUser()`でコメント投稿をゲート）を実装。
   詳細・セットアップ上の注意点は `app/README.md` を参照。
 
 ## 現在の状況（完了した範囲）
@@ -23,7 +24,7 @@
    （小規模データでは実用速度を確認。実データでのスケーラビリティは未検証、要再検証）
 2. Flutterアプリの雛形・Aha Moment動線・投稿フロー（ペイントUI）・Firebase接続・
    設定/ペイウォール画面（RevenueCat接続）・Cloud Functions（経路探索・影スコアバッチ・
-   モデレーション）を実装
+   モデレーション）・本人確認基盤（電話番号SMS認証）を実装
    （このセッションの実行環境にFlutter SDK・Firebase/RevenueCat/Firebase CLIへの
    ネットワークアクセスが無いため、ビルド・実機確認・実接続確認・実デプロイは未実施。要ローカル検証）
 
@@ -32,10 +33,10 @@
 - ローカル環境で `app/` の `flutter pub get && flutter analyze && flutter test` を実行し、
   型エラー・ビルドエラーが無いことを確認
 - ローカル環境でFirebaseプロジェクトを作成し、`app/README.md` の手順に沿って実接続を確認
-  （`google-services.json`配置、`firestore.rules`デプロイ・検証、Remote Configキー設定）
+  （`google-services.json`配置、Auth の電話番号認証プロバイダ有効化、
+  `firestore.rules`デプロイ・検証、Remote Configキー設定）
 - ローカル環境で `functions/` を `npm install` → デプロイし、`npm run seed` で検証用データを投入。
   実データ（1都市分）でのスケーラビリティ・レスポンスタイムを再測定
 - ローカル環境でRevenueCatプロジェクトを作成し、`app/README.md` の手順に沿って実接続を確認
   （APIキーの`--dart-define`注入、`premium`エンタイトルメント設定）
 - `prototype/` の技術検証を、ネットワーク制限のない環境でOverpass API実疎通ありで再実施
-- 本人確認基盤の実装へ進む

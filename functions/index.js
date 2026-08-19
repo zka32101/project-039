@@ -193,10 +193,42 @@ export const onBrightnessSpotApproved = onDocumentUpdated('brightnessSpots/{spot
   await handleSpotApproved(event.data, 'brightness');
 });
 
-// コメントのモデレーション（NGワードフィルタのみ。本人確認要件はクライアント側UI＋
-// 将来的なcustom claim連携で担保する想定）
+// コメントのモデレーション（NGワードフィルタのみ。本人確認要件はfirestore.rulesの
+// isVerifiedUser()チェックで担保する）
 export const onSpotCommentCreated = onDocumentCreated('spotComments/{commentId}', async (event) => {
   const data = event.data.data();
   const status = decideCommentModerationStatus(data.text);
   await event.data.ref.update({ moderationStatus: status });
+});
+
+// ------------------------------------------------------------------
+// syncVerificationStatus: 本人確認（電話番号認証）の結果をFirestoreへ反映
+// クライアントは`users/{uid}`へ直接書き込めない（firestore.rules参照）。
+// Firebase Authが発行するID Tokenの`phone_number`クレーム（電話番号クレデンシャルを
+// リンクした本人のみ持つ）をサーバー側で検証してから書き込むことで、
+// 自己申告による本人確認済み偽装を防ぐ。
+// ------------------------------------------------------------------
+export const syncVerificationStatus = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const phoneNumber = request.auth.token.phone_number;
+  if (!phoneNumber) {
+    throw new HttpsError(
+      'failed-precondition',
+      '電話番号クレデンシャルがリンクされていません。先にPhoneAuthCredentialをlinkWithCredentialしてください',
+    );
+  }
+
+  await db.collection('users').doc(request.auth.uid).set(
+    {
+      isVerified: true,
+      verificationMethod: 'phone',
+      phoneNumber,
+      updatedAt: new Date(),
+    },
+    { merge: true },
+  );
+
+  return { isVerified: true, verificationMethod: 'phone' };
 });

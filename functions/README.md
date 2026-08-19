@@ -26,6 +26,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
+| `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`を更新 |
 
 ## セキュリティ設計（クライアントを信用しない）
 
@@ -33,6 +34,11 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 `'pending'`で作成することを`../app/firestore.rules`が強制する。実際の承認可否
 （自動承認 or 人力承認キュー）はこのCloud Functions側（Admin SDK、ルールの制約を受けない）
 のみが判定・更新する。これにより、クライアントが自己承認扱いで投稿する抜け道を塞いでいる。
+
+同様に、`users/{uid}.isVerified`（本人確認状態）もクライアントは直接書き込めない
+（`firestore.rules`で`allow write: if false`）。`syncVerificationStatus`が、Firebase Authが
+電話番号クレデンシャルのリンクに成功した本人にのみ発行するID Tokenの`phone_number`クレームを
+検証してから書き込むことで、自己申告による本人確認済み偽装を防いでいる。
 
 ## Firestoreコレクション構成
 
@@ -49,6 +55,8 @@ shadeSpots/{id}      = { roadSegmentId, type, timeDependent, submitterId, status
 brightnessSpots/{id} = { roadSegmentId, brightnessLevel, submitterId, status, createdAt }
 spotComments/{id}    = { spotId, submitterId, text, moderationStatus, createdAt }
 config/moderation    = { region, autoApproveAnonymous, trustScoreThreshold }
+users/{uid}          = { isVerified, verificationMethod, phoneNumber, updatedAt }
+  // isVerified等はsyncVerificationStatusのみが書き込む（クライアントは読み取りのみ）
 ```
 
 ## セットアップ

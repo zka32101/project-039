@@ -6,13 +6,20 @@ rules_version = '2';
 //
 // 設計方針:
 //  - RoadSegment(道路網ジオメトリ含む) / shadeSpots / brightnessSpots は誰でも閲覧可（地図表示に必要）
-//  - 投稿の作成は匿名認証済みユーザーであれば可能（本人確認は次スプリントで別途ゲート）
+//  - 投稿の作成は匿名認証済みユーザーであれば可能
+//  - 本人確認済みユーザーのみコメント投稿可（isVerifiedUser()参照）
 //  - status/moderationStatus等のモデレーション結果フィールドは、作成時は常に'pending'固定を要求し、
 //    'approved'/'rejected'への遷移はCloud Functions（Admin SDK、本ルールの制約を受けない）のみが行う
 //    （クライアントが自己承認できてしまう抜け道を塞ぐ）
-//  - 本人確認情報（未実装のverifications等）はクライアントから一切アクセス不可
+//  - users/{uid}.isVerifiedも同様にクライアントから直接書き込めない
+//    （Cloud Functions `syncVerificationStatus` がID Tokenのphone_numberクレームを検証して書き込む）
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isVerifiedUser(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.isVerified == true;
+    }
 
     // 道路網ジオメトリ・スコア（Cloud Functionsのシード/バッチ処理のみが書き込む）
     match /roadNodes/{nodeId} {
@@ -53,25 +60,26 @@ service cloud.firestore {
 
     match /spotComments/{commentId} {
       allow read: if true;
-      // 本人確認済みユーザーのみコメント可という設計要件は、
-      // 本人確認基盤の実装後にcustom claim等で判定する（現状は認証済みなら作成可の暫定ルール）。
-      // moderationStatusもNGワード判定前提のため作成時は常に'pending'固定。
+      // 本人確認済みユーザーのみコメント可（設計書要件）。moderationStatusはNGワード判定前提のため
+      // 作成時は常に'pending'固定（判定結果の書き込みはCloud Functions側）。
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
-        && request.resource.data.moderationStatus == 'pending';
+        && request.resource.data.moderationStatus == 'pending'
+        && isVerifiedUser(request.auth.uid);
       allow update, delete: if false;
+    }
+
+    // 本人確認状態。isVerified/verificationMethodはCloud Functions
+    // （syncVerificationStatus）のみが書き込む。本人は自分の状態のみ閲覧可。
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
     }
 
     // モデレーション設定（地域別の反映モード等）。運用者のみが管理コンソール等で更新する想定
     match /config/{configId} {
       allow read: if true;
       allow write: if false;
-    }
-
-    // 本人確認情報は別コレクションに分離し、クライアントからは一切アクセスさせない
-    // （モデレーション業務のCloud Functions/管理コンソールからのみアクセス）
-    match /userVerifications/{uid} {
-      allow read, write: if false;
     }
   }
 }

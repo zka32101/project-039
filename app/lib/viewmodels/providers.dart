@@ -9,6 +9,7 @@ import '../firebase/firebase_auth_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
+import '../firebase/firebase_verification_service.dart';
 import '../purchases/revenuecat_subscription_service.dart';
 import '../services/analytics_service.dart';
 import '../services/auth_service.dart';
@@ -20,6 +21,7 @@ import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_submission_service.dart';
 import '../services/subscription_service.dart';
+import '../services/verification_service.dart';
 
 /// Firebase初期化の成否。`main.dart`で`ProviderScope`の`overrides`に実際の値を渡す
 /// （デフォルトのfalseはテスト実行時等、上書きされない場合のフォールバック）。
@@ -84,3 +86,9 @@ final subscriptionServiceProvider = Provider<SubscriptionService>((ref) {
 
 final notificationPreferenceStorageProvider =
     Provider<NotificationPreferenceStorage>((ref) => NotificationPreferenceStorage());
+
+final verificationServiceProvider = Provider<VerificationService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirebaseVerificationService(FirebaseAuth.instance, FirebaseFirestore.instance, FirebaseFunctions.instance)
+      : LocalVerificationService();
+});

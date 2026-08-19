@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/subscription_state.dart';
+import '../../models/user_profile.dart';
 import '../../viewmodels/providers.dart';
 import '../paywall/paywall_view.dart';
+import '../verification/phone_verification_view.dart';
 
 /// 設定画面（設計書Step2「設定 → アカウント（本人確認状態）／通知／サブスク管理／
 /// 反映モード表示（自分の投稿がどちらの扱いか）」）。
@@ -16,6 +18,7 @@ class SettingsView extends ConsumerStatefulWidget {
 class _SettingsViewState extends ConsumerState<SettingsView> {
   String? _uid;
   SubscriptionState _subscription = SubscriptionState.free;
+  UserProfile _profile = UserProfile.unverified;
   bool _notificationEnabled = true;
   bool _isLoading = true;
 
@@ -29,11 +32,13 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final uid = await ref.read(authServiceProvider).ensureSignedIn();
     final subscription = await ref.read(subscriptionServiceProvider).getStatus();
     final notificationEnabled = await ref.read(notificationPreferenceStorageProvider).isEnabled();
+    final profile = await ref.read(verificationServiceProvider).getProfile();
     if (!mounted) return;
     setState(() {
       _uid = uid;
       _subscription = subscription;
       _notificationEnabled = notificationEnabled;
+      _profile = profile;
       _isLoading = false;
     });
   }
@@ -46,6 +51,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       final subscription = await ref.read(subscriptionServiceProvider).getStatus();
       if (!mounted) return;
       setState(() => _subscription = subscription);
+    }
+  }
+
+  Future<void> _openVerification() async {
+    final verified = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const PhoneVerificationView()),
+    );
+    if (verified == true) {
+      final profile = await ref.read(verificationServiceProvider).getProfile();
+      if (!mounted) return;
+      setState(() => _profile = profile);
     }
   }
 
@@ -67,9 +83,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         children: [
           const _SectionHeader('アカウント'),
           ListTile(
-            leading: const Icon(Icons.verified_user_outlined),
+            leading: Icon(
+              _profile.isVerified ? Icons.verified_user : Icons.verified_user_outlined,
+              color: _profile.isVerified ? Theme.of(context).colorScheme.primary : null,
+            ),
             title: const Text('本人確認'),
-            subtitle: const Text('未確認（本人確認フローは今後のアップデートで追加予定）'),
+            subtitle: Text(_profile.isVerified ? '確認済み' : '未確認（電話番号で確認できます）'),
+            trailing: _profile.isVerified ? null : const Icon(Icons.chevron_right),
+            onTap: _profile.isVerified ? null : _openVerification,
           ),
           ListTile(
             leading: const Icon(Icons.badge_outlined),
