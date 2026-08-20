@@ -81,5 +81,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+
+    // お知らせ（設計書Step7）。運用者のみが管理コンソール等から作成し、
+    // 作成をトリガーにCloud Functions（onAnnouncementCreated）がFCM配信する
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

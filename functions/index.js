@@ -11,6 +11,7 @@
 
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
@@ -22,6 +23,7 @@ import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from '.
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
 import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
+import { buildAnnouncementMessage } from './src/announcementNotification.js';
 
 initializeApp();
 const db = getFirestore();
@@ -231,4 +233,14 @@ export const syncVerificationStatus = onCall(async (request) => {
   );
 
   return { isVerified: true, verificationMethod: 'phone' };
+});
+
+// ------------------------------------------------------------------
+// onAnnouncementCreated: お知らせ機能（設計書Step7「Cloud Functions + Firestore統一実装」）
+// announcementsドキュメント作成をトリガーに、'announcements'トピック購読者へFCM配信する。
+// ドキュメント自体はクライアントから作成不可（firestore.rules参照）。運営が管理コンソール等から作成する想定。
+// ------------------------------------------------------------------
+export const onAnnouncementCreated = onDocumentCreated('announcements/{announcementId}', async (event) => {
+  const data = event.data.data();
+  await getMessaging().send(buildAnnouncementMessage(data));
 });

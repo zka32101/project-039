@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/subscription_state.dart';
 import '../../models/user_profile.dart';
 import '../../viewmodels/providers.dart';
+import '../announcements/announcements_list_view.dart';
 import '../paywall/paywall_view.dart';
 import '../verification/phone_verification_view.dart';
 
@@ -106,9 +107,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             value: _notificationEnabled,
             onChanged: (value) async {
               await ref.read(notificationPreferenceStorageProvider).setEnabled(value);
+              await ref.read(pushNotificationServiceProvider).setEnabled(value);
               if (!mounted) return;
               setState(() => _notificationEnabled = value);
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.campaign_outlined),
+            title: const Text('お知らせ一覧'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
+            ),
           ),
           const Divider(),
           const _SectionHeader('サブスク管理'),

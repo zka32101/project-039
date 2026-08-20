@@ -1,11 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'firebase/firebase_bootstrap.dart';
+import 'firebase/firebase_push_notification_service.dart';
 import 'firebase/firebase_remote_config_service.dart';
 import 'purchases/purchases_bootstrap.dart';
+import 'services/notification_preference_storage.dart';
 import 'viewmodels/providers.dart';
 
 Future<void> main() async {
@@ -25,6 +28,16 @@ Future<void> main() async {
       await FirebaseAuth.instance.signInAnonymously();
     } catch (_) {
       // 匿名サインインの再試行は投稿時にAuthService.ensureSignedIn()側で行う
+    }
+    try {
+      // 設定画面の「お知らせを受け取る」トグル（既定ON）に合わせて
+      // announcementsトピックを購読する。許可プロンプト拒否等でもアプリは継続動作させる。
+      final notificationEnabled = await NotificationPreferenceStorage().isEnabled();
+      await FirebasePushNotificationService(FirebaseMessaging.instance).initialize(
+        enabled: notificationEnabled,
+      );
+    } catch (_) {
+      // 通知購読の失敗は致命的ではないため無視する（設定画面から再度トグルすれば再試行される）
     }
   }
 

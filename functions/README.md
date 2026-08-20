@@ -1,6 +1,7 @@
 # あんしんみち — Cloud Functions
 
-Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadowCalc / moderation）の実装。
+Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadowCalc / moderation）＋
+設計書Step7「お知らせ機能」の実装。
 経路探索・影スコア計算ロジック本体は `prototype/` で技術検証したものをそのまま移植している
 （`src/geo.js` 等は `prototype/src/` と同一内容）。
 
@@ -27,6 +28,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
 | `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`を更新 |
+| `onAnnouncementCreated` | Firestore `onDocumentCreated` | お知らせ（設計書Step7）作成をトリガーに`announcements`トピック購読者へFCM配信 |
 
 ## セキュリティ設計（クライアントを信用しない）
 
@@ -57,6 +59,9 @@ spotComments/{id}    = { spotId, submitterId, text, moderationStatus, createdAt 
 config/moderation    = { region, autoApproveAnonymous, trustScoreThreshold }
 users/{uid}          = { isVerified, verificationMethod, phoneNumber, updatedAt }
   // isVerified等はsyncVerificationStatusのみが書き込む（クライアントは読み取りのみ）
+announcements/{id}   = { title, body, createdAt }
+  // 運営が管理コンソール等から作成する想定（クライアントは作成不可）。
+  // 作成をトリガーにonAnnouncementCreatedが'announcements'トピックへFCM配信する
 ```
 
 ## セットアップ
