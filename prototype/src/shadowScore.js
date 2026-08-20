@@ -1,7 +1,20 @@
 // 建物ジオメトリ×太陽角度から、道路区間（エッジ）ごとの baseShadowScore を事前計算するバッチ。
 // 設計書 Step3「入稿・計算パイプライン」の 2〜3 に相当。
+//
+// 【パフォーマンス】素朴な実装は「全エッジ×全建物」の総当たり（O(E×B)）で、
+// prototype/RESULTS_LARGE.mdの計測により、規模が大きいほど他の処理より重くなりやすいことが
+// 分かっている（3600ノード規模で約1秒。実データ規模＝数万エッジ×数万建物では実用に耐えない
+// 可能性が高いと指摘していた）。本実装は建物群を空間インデックス化し、各エッジについて
+// 「理論上その建物の影が到達しうる範囲」の建物のみを候補として絞り込むことで、
+// 出力結果を変えずに計算量を削減する。
 import { getSunPosition } from './sunPosition.js';
 import { haversineDistanceM, midpoint, toRad } from './geo.js';
+import { buildSpatialIndex, itemsWithinBoundingBoxIndexed } from './spatialIndex.js';
+
+const METERS_PER_DEG_LAT = 111320;
+// 建物のおおよその近接判定半径（フットプリント最大辺の半分相当を簡易的に固定値と仮定）。
+// 空間インデックスの絞り込み半径にも使うため、既存の距離判定と同じ値を定数化した。
+const BUILDING_RADIUS_M = 20;
 
 /**
  * 指定日時における、各エッジの影スコア(0〜1)を計算する。
@@ -41,6 +54,21 @@ export function computeShadowScores(graph, buildings, dateTimeUtc) {
 
   const shadowDirDeg = (azimuthDeg + 180) % 360;
 
+  // 建物群を空間インデックス化し、「最も高い建物が届きうる最大距離」を絞り込み半径として使う
+  // （どのエッジについても、実際に影が届く可能性のある建物を漏れなく候補に含めるための上限値）。
+  const buildingIndex = buildSpatialIndex(
+    buildings.map((b) => ({ id: b.id, lat: b.center[0], lon: b.center[1], building: b })),
+  );
+  const tallestHeightM = Math.max(...buildings.map((b) => b.heightM));
+  const maxShadowLengthM = tallestHeightM / Math.tan(toRad(altitudeDeg));
+  const maxSearchRadiusM = maxShadowLengthM + BUILDING_RADIUS_M;
+  // 経度方向は緯度が高いほど「1度あたりの距離」が短くなる（= 同じ距離でもより多くの度数が
+  // 必要）。cos(lat)<=1のため、緯度換算(METERS_PER_DEG_LAT)より必ず大きくなるこの値を
+  // 緯度・経度の両方に使うことで、取りこぼしなく安全側に広めの候補集合を得る。
+  const repNodeForRadius = graph.nodeById.get(graph.edges[0]?.from);
+  const metersPerDegLonAtArea = METERS_PER_DEG_LAT * Math.cos(toRad(repNodeForRadius?.lat ?? 35.68));
+  const searchRadiusDeg = maxSearchRadiusM / Math.max(1, metersPerDegLonAtArea);
+
   for (const edge of graph.edges) {
     const from = graph.nodeById.get(edge.from);
     const to = graph.nodeById.get(edge.to);
@@ -51,13 +79,11 @@ export function computeShadowScores(graph, buildings, dateTimeUtc) {
     const mid = midpoint([from.lat, from.lon], [to.lat, to.lon]);
     let maxScore = 0;
 
-    for (const b of buildings) {
+    const candidates = itemsWithinBoundingBoxIndexed(buildingIndex, mid[0], mid[1], searchRadiusDeg);
+    for (const { building: b } of candidates) {
       const shadowLengthM = b.heightM / Math.tan(toRad(altitudeDeg));
       const distToCenterM = haversineDistanceM(mid, b.center);
-      // 建物のおおよその半径（フットプリント最大辺の半分相当を簡易的に25mと仮定するのではなく
-      // heightMに依存しないよう固定の近接判定半径を使う）
-      const buildingRadiusM = 20;
-      if (distToCenterM > shadowLengthM + buildingRadiusM) continue;
+      if (distToCenterM > shadowLengthM + BUILDING_RADIUS_M) continue;
 
       const bearingToPointDeg = bearingDeg(b.center, mid);
       const angleDiff = angularDifferenceDeg(bearingToPointDeg, shadowDirDeg);

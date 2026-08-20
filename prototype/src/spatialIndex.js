@@ -2,10 +2,6 @@
 // バックログ「実データでの経路探索再検証」対応でこのプロトタイプ側にも移植し、
 // benchmark_large.jsで大規模合成データに対する効果を測定できるようにしている）。
 //
-// 空間インデックス（緯度経度グリッド分割）。
-// 【背景】searchRouteのnearestNodeIdは従来「全ノードを線形走査して最小距離を探す」実装だった。
-// 合成データ（49ノード）では問題にならないが、実データ規模（1都市分＝数万〜数十万ノード想定、
-// README/index.js冒頭の既知の未検証事項を参照）では、Callable Function 1回の呼び出しごとに
 // 全件走査が発生し、レイテンシ・課金の両面でスケールしない。
 // 本モジュールは、ノード群を緯度経度の格子（グリッド）セルへ分割したインデックスを構築し、
 // 近傍セルのみを走査することで最近傍探索を高速化する。
@@ -92,6 +88,31 @@ export function nearestNodeIdIndexed(index, lat, lon) {
     }
   }
   return bestId;
+}
+
+/**
+ * インデックス化された要素のうち、(lat, lon)を中心とした一辺2*radiusDegの正方形の
+ * バウンディングボックス内にあるものを候補として返す（円形の厳密な絞り込みではない）。
+ * `shadowScore.js`が「エッジ近傍の建物のみ」に絞り込む用途のように、呼び出し側が
+ * 候補集合に対して厳密な距離・角度判定を行うことを前提にした緩い（が漏れの無い）フィルタ。
+ * @returns {Array<{id: string, lat: number, lon: number}>}
+ */
+export function itemsWithinBoundingBoxIndexed(index, lat, lon, radiusDeg) {
+  const { cellSizeDeg, cells } = index;
+  if (cells.size === 0) return [];
+
+  const cx = Math.floor(lon / cellSizeDeg);
+  const cy = Math.floor(lat / cellSizeDeg);
+  const cellSpan = Math.ceil(radiusDeg / cellSizeDeg);
+
+  const results = [];
+  for (let gx = -cellSpan; gx <= cellSpan; gx++) {
+    for (let gy = -cellSpan; gy <= cellSpan; gy++) {
+      const bucket = cells.get(`${cx + gx}:${cy + gy}`);
+      if (bucket) results.push(...bucket);
+    }
+  }
+  return results;
 }
 
 function* ringOffsets(ring) {
