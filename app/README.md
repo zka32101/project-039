@@ -46,6 +46,23 @@
   4. `purchases_flutter`の`purchasePackage`戻り値の型はSDKバージョンで変わるため、
      `flutter pub get`後に`lib/purchases/revenuecat_subscription_service.dart`のコメント箇所を
      必ず確認すること
+- **実地図タイル（Google Maps）は既定で無効。有効化にはネイティブ側の設定が別途必要**。
+  `google_maps_flutter`パッケージは追加済みだが、このセッションには`android/`/`ios/`
+  ディレクトリ自体が存在しない（前述の`flutter create .`で生成する必要がある）ため、
+  APIキーの登録先ファイルもまだ無い。ローカルで以下を実施すること:
+  1. Google Cloud ConsoleでMaps SDK for Android / Maps SDK for iOSを有効化し、APIキーを発行
+     （課金設定が必要。用途を該当APIキーに制限することを推奨）
+  2. `flutter create .` 実行後、Android: `android/app/src/main/AndroidManifest.xml` の
+     `<application>` タグ内に
+     `<meta-data android:name="com.google.android.geo.API_KEY" android:value="発行したキー"/>`
+     を追加し、`android/app/build.gradle` の `minSdkVersion` を21以上に設定
+  3. iOS: `ios/Runner/AppDelegate.swift` に `import GoogleMaps` と
+     `GMSServices.provideAPIKey("発行したキー")` を追加（`application(_:didFinishLaunchingWithOptions:)`内）。
+     `ios/Podfile` の`platform :ios`を`'14.0'`以上に設定
+  4. `flutter run --dart-define=USE_GOOGLE_MAPS=true` で起動（未指定時は`SchematicMapView`が
+     使われ、上記ネイティブ設定が無くてもクラッシュしない。`lib/config/map_config.dart`参照）
+  - APIキーをリポジトリにコミットしないこと（`AndroidManifest.xml`はGradleの
+    `manifestPlaceholders`や環境変数経由での注入に置き換えることを推奨）
 - **Cloud Functions（`../functions/`）も同様に実接続・実デプロイの確認ができていない**。
   Firebase接続済みでも、`../functions/README.md`の手順（`npm install`→デプロイ→
   `npm run seed`でのFirestoreへのデータ投入）を済ませないと`RemoteRouteSearchService`は
@@ -149,6 +166,18 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     （バイナリ）を用意しても実機再生を確認する手段が無いため、`audioplayers`等の追加ではなく
     Flutter標準の`SystemSound`で代替している。デザインアセット・ローカル検証環境が揃った段階で
     `lottie`パッケージへの置き換えを検討する
+- [x] 実地図タイル（Google Maps）: `views/home/widgets/real_map_route_view.dart`（`RealMapRouteView`）
+  - `google_maps_flutter`を使い、`SchematicMapView`と同じ`RouteResult`から区間ごとの安心スコア
+    色分け（`Polyline`）・現在地/目的地マーカーを描画。ルート変更時はカメラを新しい範囲へ
+    自動フィット（`newLatLngBounds`）
+  - `config/map_config.dart`の`useGoogleMapTiles`（既定`false`、`--dart-define=USE_GOOGLE_MAPS=true`
+    で有効化）で`SchematicMapView`と切り替え。ネイティブ側のAPIキー設定が無い環境でも、
+    既定値のままなら`SchematicMapView`が使われるためクラッシュしない
+  - 【重要な制約】このセッションには`android/`/`ios/`プラットフォームディレクトリ自体が
+    存在しない（`flutter create .`未実施）ため、Google Maps SDKが要求するネイティブ側の
+    APIキー設定（AndroidManifest.xml・AppDelegate.swift）はこのセッションでは行えていない。
+    ローカルでの追加設定が必須（上記「セットアップ上の重要な注記」参照）
+  - 住所・地名検索（Geocoding API）は引き続き未実装
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -159,7 +188,11 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   同時に複数のお知らせが届いた場合の重ね表示・キュー管理は未対応）
 - オフライン地図キャッシュの拡張（現状は「直近の検索結果1件」のみ。道路網データ全体の
   ローカルキャッシュ・複数エリア分の保持は未実装）
-- 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
+- 実地図タイルのネイティブ設定（`android/`/`ios/`ディレクトリの生成・APIキー登録）— Dart側の
+  実装（`RealMapRouteView`）は完了。ローカルで`flutter create .`後にAPIキーを設定するまでは
+  既定の`SchematicMapView`が使われる（上記参照）
+- `PaintCanvas`（投稿時のなぞり操作）は引き続き模式図ベース。投稿UIを実地図タイル上での
+  なぞり操作に置き換えるかは別途検討
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
 - **Firebase/RevenueCat/Cloud Functions実接続の検証** — このセッションはネットワークアクセスが
   無いため、`flutterfire configure`・RevenueCatダッシュボード連携・実プロジェクトへの疎通・
@@ -173,6 +206,8 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 ```
 lib/
+  config/
+    map_config.dart  // 実地図タイル有効化フラグ（USE_GOOGLE_MAPS --dart-define）
   models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile,
                      // Announcement, AppNotification
   services/
@@ -212,6 +247,8 @@ lib/
   views/
     onboarding/      // オンボーディング(3枚)
     home/            // ホーム（安心ルート表示、詳細ルート最適化トグル、目的地選択導線）
+      widgets/schematic_map_view.dart   // 模式図表示（既定のフォールバック）
+      widgets/real_map_route_view.dart  // Google Maps表示（USE_GOOGLE_MAPS有効時）
     paint/           // 投稿フロー（種別選択→ペイント→確認→完了）
     settings/        // 設定（アカウント/通知/サブスク管理/反映モード表示）
     paywall/         // ペイウォール（詳細ルート最適化・オフライン地図利用時にトリガー）
@@ -252,4 +289,7 @@ flutter pub get
 flutter analyze
 flutter test
 flutter run
+# 実地図タイル（Google Maps）を有効化する場合、ネイティブ側のAPIキー設定（上記参照）を
+# 済ませたうえで:
+flutter run --dart-define=USE_GOOGLE_MAPS=true
 ```
