@@ -74,7 +74,8 @@
 Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 - [x] データモデル（`RoadSegment` / `RouteResult` / `SpotType` / `SpotSubmissionRequest`
-  / `ModerationConfig` 等。永続化するUserドキュメント設計は次スプリントで追加）
+  / `ModerationConfig` / `UserProfile` 等。永続化するUserドキュメント設計は本人確認基盤
+  （下記）実装時に`users/{uid}`として追加済み）
 - [x] Service層: `LocationService` / `RouteSearchService` / `SpotSubmissionService` / `AuthService` /
   `RemoteConfigService`（すべて抽象インターフェース＋オンデバイス実装＋Firebase実装の二本立て）
 - [x] Firebase接続: `firebase_bootstrap.dart`でアプリ起動時に初期化を試み、失敗時は
@@ -93,7 +94,9 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   反映モードにより「即時反映」「承認待ち」を表示分岐
 - [x] 設定画面（アカウント／通知／サブスク管理／反映モード表示）とペイウォール:
   - アカウント: 本人確認状態（確認済み/未確認）と匿名ユーザーID表示。未確認時は本人確認へ導線
-  - 通知: お知らせ受信トグル（実際のプッシュ配信基盤=FCM等は未実装、設定値の永続化のみ）
+  - 通知: お知らせ受信トグル。`PushNotificationService.setEnabled()`と連動し、
+    実際にFCMの`announcements`トピック購読/解除を行う（下記「プッシュ通知配信基盤」参照。
+    設定値自体は端末内にも永続化）
   - サブスク管理: 現在のプラン表示、ペイウォールへの導線
   - 反映モード表示: `ModerationConfig`に基づき「即時反映」「承認待ち」を表示
   - ペイウォール: 設計書「Aha Moment直後ではなくトリガー」に従い、ホーム画面の
