@@ -10,8 +10,13 @@ import '../services/spot_submission_service.dart';
 /// Firestoreへ実際に投稿を永続化する実装。
 /// コレクション構成は設計書Step3のデータモデルに準拠:
 ///   shadeSpots      { roadSegmentId, type, timeDependent, submitterId, status, createdAt, votes }
-///   brightnessSpots { roadSegmentId, brightnessLevel, submitterId, status, createdAt }
+///   brightnessSpots { roadSegmentId, brightnessLevel, reasonType, submitterId, status, createdAt }
 ///   spotComments    { spotId, submitterId, text, moderationStatus, createdAt }
+///
+/// `brightnessSpots`の`reasonType`（'dark'=夜の明るさ投稿 / 'low_foot_traffic'=人通りが少ない投稿）は、
+/// 「人通りが少ない」が主観的・偏見の影響を受けやすい投稿種別であることを`handleSpotCreated`
+/// （Cloud Functions）が区別し、常に人力承認へ回すために使う（荒らし対策、
+/// `SpotType.requiresManualReview`参照）。
 ///
 /// 【重要】status/moderationStatusは常に'pending'で作成する。実際の承認可否（即時反映/承認待ち）は
 /// クライアントを信用せずCloud Functions側（functions/index.js の onShadeSpotCreated等）が判定し、
@@ -48,16 +53,18 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
 
     final submitterId = await _authService.ensureSignedIn();
     final moderationConfig = _moderationConfigProvider();
-    final reflectMode =
-        moderationConfig.autoApproveAnonymous ? ReflectMode.immediate : ReflectMode.pendingApproval;
+    final reflectMode = !type.requiresManualReview && moderationConfig.autoApproveAnonymous
+        ? ReflectMode.immediate
+        : ReflectMode.pendingApproval;
 
     DocumentReference<Map<String, dynamic>> spotRef;
-    if (type == SpotType.brightness) {
+    if (type == SpotType.brightness || type == SpotType.lowFootTraffic) {
       // UIはまだ明るさレベル(dark/normal/bright)の選択に対応していないため、
       // 「暗いので投稿する」という最も典型的な利用動機を想定し暫定的に'dark'固定とする（次スプリントで選択UI追加）。
       spotRef = await _firestore.collection('brightnessSpots').add({
         'roadSegmentId': snap.edgeId,
         'brightnessLevel': 'dark',
+        'reasonType': type == SpotType.lowFootTraffic ? 'low_foot_traffic' : 'dark',
         'submitterId': submitterId,
         'status': 'pending', // Cloud Functions側で承認可否を判定し更新する
         'createdAt': FieldValue.serverTimestamp(),
@@ -86,7 +93,7 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
 
     if (reflectMode == ReflectMode.immediate) {
       final edge = graph.edgeById[snap.edgeId]!;
-      final delta = type == SpotType.brightness ? 0.0 : 1.0;
+      final delta = (type == SpotType.brightness || type == SpotType.lowFootTraffic) ? 0.0 : 1.0;
       edge.shadowScore = ((edge.shadowScore + delta) / 2).clamp(0, 1);
     }
 
@@ -102,7 +109,8 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
       case SpotType.rainShelter:
         return 'rain_shelter';
       case SpotType.brightness:
-        throw ArgumentError('brightnessはbrightnessSpotsコレクションで扱う');
+      case SpotType.lowFootTraffic:
+        throw ArgumentError('${type.name}はbrightnessSpotsコレクションで扱う');
     }
   }
 }

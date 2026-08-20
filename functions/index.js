@@ -163,11 +163,17 @@ export const syncModerationConfigFromRemoteConfig = onSchedule('every 1 hours', 
 // 同一投稿者（submitterId、firestore.rulesでrequest.auth.uidとの一致を強制済み）が
 // 直近RATE_LIMIT_WINDOW_MS以内にRATE_LIMIT_MAX_SUBMISSIONS件を超えて投稿していれば、
 // 自動承認をスキップして'pending'（人力承認キュー）に留め置く（`rateLimiting.js`参照）。
+//
+// 「人通りが少ない」（brightnessSpots, reasonType: 'low_foot_traffic'）は、日陰・雨よけの
+// 有無のような客観的な観測と異なり、投稿者の主観や偏見の影響を受けやすい（特定エリア・
+// 属性への偏った印象の助長・荒らしのリスク）ため、地域のモデレーション設定に関わらず
+// 常に人力承認を必須とする（`decideInitialStatus`の`requiresManualReview`参照）。
 // ------------------------------------------------------------------
 async function handleSpotCreated(snapshot, spotKind) {
   const data = snapshot.data();
   const moderationConfig = await loadModerationConfig(db);
-  let status = decideInitialStatus(moderationConfig);
+  const requiresManualReview = spotKind === 'brightness' && data.reasonType === 'low_foot_traffic';
+  let status = decideInitialStatus(moderationConfig, { requiresManualReview });
 
   if (status === 'approved') {
     const recentCount = await countRecentSubmissions(db, data.submitterId, new Date());

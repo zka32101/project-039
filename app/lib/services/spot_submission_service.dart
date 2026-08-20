@@ -46,15 +46,18 @@ class LocalSpotSubmissionService implements SpotSubmissionService {
       throw SpotSubmissionException('道路の近くをなぞってください（道路から離れすぎています）');
     }
 
-    final reflectMode = _moderationConfigProvider().autoApproveAnonymous
+    // 「人通りが少ない」等の主観的な投稿種別は、地域のモデレーション設定に関わらず
+    // 常に承認待ちにする（荒らし対策、`SpotType.requiresManualReview`参照）。
+    final reflectMode = !type.requiresManualReview && _moderationConfigProvider().autoApproveAnonymous
         ? ReflectMode.immediate
         : ReflectMode.pendingApproval;
 
     if (reflectMode == ReflectMode.immediate) {
       final edge = graph.edgeById[snap.edgeId]!;
-      // 投稿1件による簡易加重更新（明るさ投稿は「暗い」報告を想定しスコアを下げる方向、
-      // それ以外＝日陰系の投稿はスコアを上げる方向）。本番はサーバー側の重み付け合算に置き換える。
-      final delta = type == SpotType.brightness ? 0.0 : 1.0;
+      // 投稿1件による簡易加重更新（明るさ・人通り投稿は「暗い/少ない」報告を想定し
+      // スコアを下げる方向、それ以外＝日陰系の投稿はスコアを上げる方向）。
+      // 本番はサーバー側の重み付け合算に置き換える。
+      final delta = (type == SpotType.brightness || type == SpotType.lowFootTraffic) ? 0.0 : 1.0;
       edge.shadowScore = ((edge.shadowScore + delta) / 2).clamp(0, 1);
     }
 

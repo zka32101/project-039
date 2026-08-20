@@ -59,6 +59,13 @@ Custom Claimはトークン発行時点のスナップショットのため、�
 モデレーション設定が自動承認を許可していても'pending'（人力承認キュー）に留め置き、
 即座の地図反映を止める。誤検知時にも復旧可能な可逆的措置（削除・拒否ではなく保留）にしている。
 
+**主観的な投稿種別への荒らし対策（人通りが少ない）**: 「人通りが少ない」（`brightnessSpots`の
+`reasonType: 'low_foot_traffic'`）は、日陰・雨よけの有無のような客観的な観測と異なり、
+投稿者の主観・偏見の影響を受けやすい（特定エリア・属性への偏った印象の助長・荒らしのリスク）。
+そのため`decideInitialStatus`に`requiresManualReview: true`を渡し、地域のモデレーション設定
+（`autoApproveAnonymous`）に関わらず常に'pending'（人力承認キュー）に留め置く
+（`moderationLogic.js`参照）。上記のレート制限とは独立した、この投稿種別固有の追加防御。
+
 ## Firestoreコレクション構成
 
 ```
@@ -71,7 +78,9 @@ roadSegments/{id}    = { roadId, fromNodeId, toNodeId, distanceM,
   // shadeSpots/brightnessSpotsの roadSegmentId がこのドキュメントIDを指す
 buildings/{id}       = { heightM, centerLat, centerLon }
 shadeSpots/{id}      = { roadSegmentId, type, timeDependent, submitterId, status, createdAt, votes }
-brightnessSpots/{id} = { roadSegmentId, brightnessLevel, submitterId, status, createdAt }
+brightnessSpots/{id} = { roadSegmentId, brightnessLevel, reasonType, submitterId, status, createdAt }
+  // reasonType: 'dark'（夜の明るさ投稿） | 'low_foot_traffic'（人通りが少ない投稿）
+  // 'low_foot_traffic'は常に人力承認へ回す（上記「投稿の不正利用対策」参照）
 spotComments/{id}    = { spotId, submitterId, text, moderationStatus, createdAt }
 config/moderation    = { region, autoApproveAnonymous, trustScoreThreshold }
 users/{uid}          = { isVerified, verificationMethod, phoneNumber, updatedAt }
