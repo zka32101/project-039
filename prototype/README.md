@@ -13,16 +13,29 @@
 
 詳細な数値は [`RESULTS.md`](./RESULTS.md)（`npm run benchmark` で再生成可能）を参照。
 
+追加で、バックログ「実データでの経路探索再検証」対応として、より大きな合成グリッド
+（デフォルト60x60=3600ノード）での再検証を [`RESULTS_LARGE.md`](./RESULTS_LARGE.md)
+（`npm run benchmark:large` で再生成可能）に記録した。要点:
+
+- グラフ構築・経路探索（Dijkstra）は3600ノード規模でも実用速度（数百ms以内）に収まる
+- 影スコア事前計算バッチはO(エッジ数×建物数)の総当たりで、規模が上がるほど他の処理より
+  重くなる（3600ノード規模で約1秒。実データ規模ではボトルネックになる可能性が高い）
+- 最近傍ノード探索は、実データ規模（1都市分）に近い4万ノードの専用データセットで比較すると、
+  空間インデックス（`functions/src/spatialIndex.js`）導入により**約9倍**高速化する
+  （数千ノード程度では差が測定誤差に埋もれるため、この比較のみ別データセットで実施）
+
 ## 既知の制約（実環境での再検証が必須な点）
 
 1. **Overpass APIへの実疎通は未検証。** このサンドボックス環境は外向きネットワークが
    プロキシでブロックされており（`overpass-api.de` へのCONNECTが403）、`src/fetchOsmData.js`
    は実装済みだが実行できていない。データ構造・レートリミット対応・タイムアウト処理は
    コードレビューベースの実装に留まる。
-2. **検証データは合成データ（49ノード・7x7グリッド、東京駅周辺を模した規模・密度）。**
+2. **検証データは合成データ（最大でも60x60=3600ノードグリッド、東京駅周辺を模した規模・密度）。**
    実際の1都市（数万〜数十万ノード規模）でグラフ構築・影スコア計算がどうスケールするかは
-   未検証。特に影スコア計算は現状「全建物×全エッジ」の総当たりに近い実装のため、
-   広域では空間インデックス（グリッド分割・R-tree等）による最適化が必須になる可能性が高い。
+   依然として未検証（`RESULTS_LARGE.md`はあくまで規模を上げたときの傾向確認）。特に影スコア計算は
+   現状「全建物×全エッジ」の総当たりに近い実装のため、広域では空間インデックス
+   （グリッド分割・R-tree等）による絞り込みが必須になる可能性が高い
+   （最近傍ノード探索側は`src/spatialIndex.js`で対応済み）。
 3. **影判定アルゴリズムは簡易な2D近似**（建物中心からの方位角・距離ベースの判定）。
    建物の実際のフットプリント形状までは考慮していない。精度は本検証のスコープ外。
 
@@ -51,9 +64,12 @@ src/
   snapToRoad.js     // 投稿UIの軌跡→道路区間スナップ（設計書Step5.5対応）
   minHeap.js         // Dijkstra用の優先度付きキュー
   benchmark.js       // 検証項目1〜3を一括計測しRESULTS.mdを生成
+  benchmark_large.js // 大規模合成データでの再検証 → RESULTS_LARGE.mdを生成
+  spatialIndex.js    // 最近傍ノード探索用の空間インデックス（functions/src/と同一）
 fixtures/
-  generate_sample.mjs // 合成グリッドデータ生成スクリプト
-  tokyo_sample.json   // 生成済み検証用データ（49ノード/84エッジ/24建物）
+  generate_sample.mjs       // 合成グリッドデータ生成スクリプト（49ノード）
+  generate_large_sample.mjs // 大規模合成グリッドデータ生成スクリプト（デフォルト60x60）
+  tokyo_sample.json         // 生成済み検証用データ（49ノード/84エッジ/24建物）
 test/                  // unit tests（node --test）
 ```
 
@@ -61,7 +77,8 @@ test/                  // unit tests（node --test）
 
 ```bash
 npm install   # 依存パッケージ無し（Node.js標準機能のみで完結）
-npm test              # unit test（17件）
+npm test              # unit test（21件）
 npm run benchmark     # 検証項目1〜3を計測 → RESULTS.md を再生成
+npm run benchmark:large  # 大規模合成データでの再検証 → RESULTS_LARGE.md を再生成
 npm run fetch:sample  # fixtures/tokyo_sample.json を再生成（合成データ）
 ```

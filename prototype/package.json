@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "benchmark": "node src/benchmark.js",
+    "benchmark:large": "node fixtures/generate_large_sample.mjs && node src/benchmark_large.js",
     "fetch:sample": "node src/fetchOsmData.js",
     "test": "node --test test/*.test.js"
   },
