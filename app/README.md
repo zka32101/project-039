@@ -129,13 +129,25 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     ナビゲーション要素と競合しやすい・アイコン非対応・他のSnackBarと表示キューを共有してしまう
     という制約があったため、`Overlay`への直接挿入方式に置き換えた。
     バックグラウンド/終了時の通知表示はFCM標準動作に任せている
+- [x] オフライン地図の実キャッシュ（直近ルート1件分）: `services/route_result_cache.dart`
+  （`RouteResultCache`インターフェース＋`SharedPreferencesRouteResultCache`）
+  - `RemoteRouteSearchService`が`searchRoute`の成功結果を毎回ローカルへ保存。次回呼び出しが
+    ネットワークエラー（`FirebaseFunctionsException(code: 'unavailable')`や純粋な通信断）で
+    失敗した場合、直近の成功結果を`RouteResult.isFromCache=true`として返す
+  - キャッシュの有効性は`isCacheUsable()`（位置1.5km以内・保存後24時間以内）で判定。
+    範囲外・期限切れのキャッシュは使わずそのままエラーを投げる（誤った古い情報を出さないため）
+  - `HomeView`は`route.isFromCache`のとき「オフラインのため前回の検索結果を表示中です」バナーを表示
+  - 【スコープ】道路網データ全体（実データ規模では数万エッジ）のキャッシュではなく、
+    「直近の検索結果1件」の最小実装。ペイウォールの訴求文言・導線（プレミアム限定機能としての
+    「オフライン地図」）は別途検討の余地あり
 
 ## このセッションで実装していない範囲（次スプリント）
 
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
 - フォアグラウンド通知バナーの複数通知キュー表示（現状は専用オーバーレイ化は済み。
   同時に複数のお知らせが届いた場合の重ね表示・キュー管理は未対応）
-- オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
+- オフライン地図キャッシュの拡張（現状は「直近の検索結果1件」のみ。道路網データ全体の
+  ローカルキャッシュ・複数エリア分の保持は未実装）
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
 - **Firebase/RevenueCat/Cloud Functions実接続の検証** — このセッションはネットワークアクセスが
@@ -167,6 +179,7 @@ lib/
     app_version.dart             // min_supported_version比較ロジック
     subscription_service.dart    // インターフェース＋オンデバイスのデモ購入フォールバック
     notification_preference_storage.dart
+    route_result_cache.dart      // 直近ルート1件のオフラインキャッシュ（位置・鮮度チェック込み）
     location_service.dart
     analytics_service.dart
     onboarding_storage.dart
@@ -209,6 +222,7 @@ test/
   paywall_view_test.dart        // ペイウォールのwidget test
   settings_view_test.dart       // 設定画面のwidget test
   firebase_route_search_service_test.dart // Cloud Functionsレスポンス変換のunit test
+  route_result_cache_test.dart  // オフラインキャッシュのJSON往復・位置/鮮度判定のunit test
   verification_service_test.dart      // 本人確認(デモ実装)のunit test
   phone_verification_view_test.dart   // 本人確認画面のwidget test
   destination_picker_view_test.dart   // 目的地入力画面のwidget test
