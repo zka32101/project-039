@@ -23,6 +23,7 @@ import { computeShadowScores } from './src/shadowScore.js';
 import { searchRoute as searchRouteEngine } from './src/routeSearch.js';
 import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from './src/firestoreRoadNetwork.js';
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
+import { exceedsRateLimit, countRecentSubmissions } from './src/rateLimiting.js';
 import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
@@ -157,11 +158,23 @@ export const syncModerationConfigFromRemoteConfig = onSchedule('every 1 hours', 
 // モデレーション判定（ModerationConfigの地域設定に応じ自動承認 or 人力承認キューへ）」に対応。
 // クライアントは常にstatus:'pending'で作成し（firestore.rulesで強制）、
 // 実際の承認可否はここで判定する。
+//
+// 投稿の不正利用対策（連投・スパム投稿のレート制限）: 自動承認対象と判定された場合でも、
+// 同一投稿者（submitterId、firestore.rulesでrequest.auth.uidとの一致を強制済み）が
+// 直近RATE_LIMIT_WINDOW_MS以内にRATE_LIMIT_MAX_SUBMISSIONS件を超えて投稿していれば、
+// 自動承認をスキップして'pending'（人力承認キュー）に留め置く（`rateLimiting.js`参照）。
 // ------------------------------------------------------------------
 async function handleSpotCreated(snapshot, spotKind) {
   const data = snapshot.data();
   const moderationConfig = await loadModerationConfig(db);
-  const status = decideInitialStatus(moderationConfig);
+  let status = decideInitialStatus(moderationConfig);
+
+  if (status === 'approved') {
+    const recentCount = await countRecentSubmissions(db, data.submitterId, new Date());
+    if (exceedsRateLimit(recentCount)) {
+      status = 'pending'; // レート制限超過。人力承認キューへ留め置く（自動承認しない）
+    }
+  }
 
   if (status === 'approved') {
     await snapshot.ref.update({ status: 'approved' });

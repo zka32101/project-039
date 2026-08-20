@@ -24,7 +24,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 |---|---|---|
 | `searchRoute` | Callable (`onCall`) | 重み付き最短経路探索。Flutterアプリの`RemoteRouteSearchService`から呼び出される |
 | `shadowCalcBatch` | Schedule（3時間毎） | 建物×太陽角度から`roadSegments`の`baseShadowScore`を再計算 |
-| `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち）＋承認時の集計反映 |
+| `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち、連投レート制限含む）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
 | `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`とAuth Custom Claim（`isVerified`）を更新 |
@@ -51,6 +51,14 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 Custom Claimはトークン発行時点のスナップショットのため、クライアント側は本人確認完了直後に
 `user.getIdToken(true)`で強制リフレッシュしてから利用する（`app/lib/firebase/firebase_verification_service.dart`参照）。
 
+**投稿の不正利用対策（連投・スパム投稿のレート制限）**: `submitterId`は`firestore.rules`で
+`request.auth.uid`との一致を強制しているため偽装できない。この`submitterId`を使い、
+`handleSpotCreated`が投稿作成のたびに、同一投稿者の直近10分間の投稿件数
+（`shadeSpots`/`brightnessSpots`横断、`src/rateLimiting.js`の`RATE_LIMIT_WINDOW_MS`/
+`RATE_LIMIT_MAX_SUBMISSIONS`参照）を確認する。上限（既定5件）を超えていれば、
+モデレーション設定が自動承認を許可していても'pending'（人力承認キュー）に留め置き、
+即座の地図反映を止める。誤検知時にも復旧可能な可逆的措置（削除・拒否ではなく保留）にしている。
+
 ## Firestoreコレクション構成
 
 ```
@@ -75,17 +83,21 @@ announcements/{id}   = { title, body, createdAt }
 
 ## セットアップ
 
-`firebase.json`はリポジトリルートに配置済み（`functions`のsourceと`firestore.rules`のパスを
-指定）。ローカルで`firebase use --add`を実行し対象プロジェクトを紐づけてから、リポジトリルートで
-以下を実行する:
+`firebase.json`はリポジトリルートに配置済み（`functions`のsourceと`firestore.rules`/
+`firestore.indexes.json`のパスを指定）。ローカルで`firebase use --add`を実行し対象プロジェクトを
+紐づけてから、リポジトリルートで以下を実行する:
 
 ```bash
 cd functions && npm install && cd ..
 npm test --prefix functions   # unit test（純粋ロジックのみ。Firestore/Functions自体はエミュレータが必要）
 firebase emulators:start --only functions,firestore   # ローカル動作確認（要Firebase CLI）
 node functions/seed/seedRoadNetwork.js                 # 検証用データ投入（要FIRESTORE_EMULATOR_HOST or サービスアカウント）
-firebase deploy --only functions,firestore:rules        # 本番デプロイ
+firebase deploy --only functions,firestore:rules,firestore:indexes  # 本番デプロイ
 ```
+
+**注意**: `firestore.indexes.json`の複合インデックス（`shadeSpots`/`brightnessSpots`の
+`submitterId`+`createdAt`、連投レート制限判定用、下記参照）は`firestore:indexes`のデプロイを
+忘れると`countRecentSubmissions`のクエリが失敗する（`FAILED_PRECONDITION`エラー）。
 
 ## 既知の制約・次スプリントでの改善点
 
