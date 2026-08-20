@@ -1,19 +1,63 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'models/app_notification.dart';
 import 'services/app_version.dart';
 import 'services/onboarding_storage.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/providers.dart';
+import 'views/announcements/announcements_list_view.dart';
 import 'views/home/home_view.dart';
 import 'views/onboarding/onboarding_view.dart';
 import 'views/update_required/update_required_view.dart';
 
-class AnshinmichiApp extends ConsumerWidget {
+class AnshinmichiApp extends ConsumerStatefulWidget {
   const AnshinmichiApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnshinmichiApp> createState() => _AnshinmichiAppState();
+}
+
+class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<AppNotification>? _foregroundMessageSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // フォアグラウンド受信時のみアプリ内バナーで通知する
+    // （バックグラウンド/終了時はFCM標準の通知表示に任せる）。
+    _foregroundMessageSubscription =
+        ref.read(pushNotificationServiceProvider).foregroundMessages.listen(_showForegroundBanner);
+  }
+
+  @override
+  void dispose() {
+    _foregroundMessageSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _showForegroundBanner(AppNotification notification) {
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text('${notification.title}\n${notification.body}'),
+        action: SnackBarAction(
+          label: '確認する',
+          onPressed: () => _navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
+          ),
+        ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       title: 'あんしんみち',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),

@@ -1,4 +1,5 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../models/app_notification.dart';
 import '../services/push_notification_service.dart';
 
 const announcementsTopic = 'announcements';
@@ -7,10 +8,7 @@ const announcementsTopic = 'announcements';
 /// `functions/index.js` の `onAnnouncementCreated` が `announcements` トピック宛に
 /// 送信したお知らせを受信する。バックグラウンド/終了時の通知表示はFCMの標準動作
 /// （`notification`ペイロード）に任せ、アプリ側での追加実装は不要。
-///
-/// 【スコープ外】フォアグラウンド受信時のアプリ内バナー表示（flutter_local_notifications等）
-/// は未実装。現状はログ出力のみで、ユーザーはアプリを開いたタイミングで
-/// `AnnouncementsListView`（お知らせ一覧）を確認する運用を想定。
+/// フォアグラウンド受信時は[foregroundMessages]経由でUI層（`app.dart`）がバナー表示する。
 class FirebasePushNotificationService implements PushNotificationService {
   FirebasePushNotificationService(this._messaging);
 
@@ -32,4 +30,17 @@ class FirebasePushNotificationService implements PushNotificationService {
       await _messaging.unsubscribeFromTopic(announcementsTopic);
     }
   }
+
+  @override
+  Stream<AppNotification> get foregroundMessages {
+    return FirebaseMessaging.onMessage.map(mapRemoteMessageToAppNotification);
+  }
+}
+
+/// `RemoteMessage`→`AppNotification`の変換。純粋関数として切り出しunit testしやすくしている。
+AppNotification mapRemoteMessageToAppNotification(RemoteMessage message) {
+  return AppNotification(
+    title: message.notification?.title ?? 'あんしんみちからのお知らせ',
+    body: message.notification?.body ?? '',
+  );
 }
