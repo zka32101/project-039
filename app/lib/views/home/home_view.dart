@@ -168,6 +168,37 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
+/// オフライン時、`RouteResultCache`から復元したルートを表示していることを明示するバナー
+/// （バックログ「オフライン地図の実キャッシュ」対応）。実際の日陰・混雑状況とは
+/// ズレている可能性があるため、その旨を伝えることを目的とする。
+class _OfflineCacheBanner extends StatelessWidget {
+  const _OfflineCacheBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, size: 18, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'オフラインのため前回の検索結果を表示中です。実際の状況と異なる場合があります',
+              style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReadyView extends ConsumerWidget {
   const _ReadyView({
     required this.route,
@@ -219,6 +250,10 @@ class _ReadyView extends ConsumerWidget {
                 ? '選んだ目的地までの、日陰や明るさに配慮したルートです'
                 : '現在地周辺で見つかった、日陰や明るさに配慮したルートです',
           ),
+          if (route.isFromCache) ...[
+            const SizedBox(height: 8),
+            _OfflineCacheBanner(),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [

@@ -1,16 +1,23 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/road_segment.dart';
 import '../models/route_result.dart';
+import '../services/route_result_cache.dart';
 import '../services/route_search_service.dart';
 
 /// Cloud Functions（`functions/index.js` の `searchRoute` Callable Function）を呼び出す実装。
 /// 設計書「経路探索・影計算はサーバー側（Cloud Functions）で行う。クライアントは結果表示に専念」
 /// を実現する本番経路。オンデバイス版（`LocalRouteSearchService`）は開発時・Firebase未接続時の
 /// フォールバックとして残す。
+///
+/// オフライン時（Callable Functionの呼び出し自体が失敗した場合）は、[RouteResultCache]に
+/// 保存された直近の成功結果があればそれを返す（`RouteResult.isFromCache=true`で明示）。
+/// バックログ「オフライン地図の実キャッシュ」対応。
 class RemoteRouteSearchService implements RouteSearchService {
-  RemoteRouteSearchService(this._functions);
+  RemoteRouteSearchService(this._functions, {RouteResultCache? cache})
+      : _cache = cache ?? SharedPreferencesRouteResultCache();
 
   final FirebaseFunctions _functions;
+  final RouteResultCache _cache;
 
   @override
   Future<RouteResult?> searchNearbyComfortRoute({
@@ -39,10 +46,23 @@ class RemoteRouteSearchService implements RouteSearchService {
       });
     } on FirebaseFunctionsException catch (e) {
       if (e.code == 'not-found') return null;
+      // 'unavailable'（オフライン等のネットワーク層エラー）はキャッシュへフォールバック。
+      // それ以外（invalid-argument等、リクエスト自体の不備）はキャッシュを試さずそのまま投げる。
+      if (e.code == 'unavailable') {
+        final cached = await _cache.load(lat: currentLat, lon: currentLon);
+        if (cached != null) return cached;
+      }
+      rethrow;
+    } catch (_) {
+      // FirebaseFunctionsException以外（純粋なネットワーク断等）もオフライン扱いでキャッシュを試す。
+      final cached = await _cache.load(lat: currentLat, lon: currentLon);
+      if (cached != null) return cached;
       rethrow;
     }
 
-    return parseSearchRouteResponse(Map<String, dynamic>.from(result.data as Map));
+    final route = parseSearchRouteResponse(Map<String, dynamic>.from(result.data as Map));
+    await _cache.save(lat: currentLat, lon: currentLon, route: route);
+    return route;
   }
 }
 
