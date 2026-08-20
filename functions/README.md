@@ -27,7 +27,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
-| `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`を更新 |
+| `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`とAuth Custom Claim（`isVerified`）を更新 |
 | `onAnnouncementCreated` | Firestore `onDocumentCreated` | お知らせ（設計書Step7）作成をトリガーに`announcements`トピック購読者へFCM配信 |
 
 ## セキュリティ設計（クライアントを信用しない）
@@ -41,6 +41,14 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 （`firestore.rules`で`allow write: if false`）。`syncVerificationStatus`が、Firebase Authが
 電話番号クレデンシャルのリンクに成功した本人にのみ発行するID Tokenの`phone_number`クレームを
 検証してから書き込むことで、自己申告による本人確認済み偽装を防いでいる。
+
+`isVerified`はFirestoreドキュメントに加え、同じ関数内でAuth Custom Claimとしても
+`getAuth().setCustomUserClaims(uid, { isVerified: true })`で設定する。
+`firestore.rules`の`isVerifiedUser()`はCustom Claim（`request.auth.token.isVerified`）のみを
+参照する構成にしており、`spotComments`の作成可否判定のたびにFirestoreドキュメントを
+`get()`する必要がない（追加の読み取り課金・レイテンシを避けられる）。
+Custom Claimはトークン発行時点のスナップショットのため、クライアント側は本人確認完了直後に
+`user.getIdToken(true)`で強制リフレッシュしてから利用する（`app/lib/firebase/firebase_verification_service.dart`参照）。
 
 ## Firestoreコレクション構成
 

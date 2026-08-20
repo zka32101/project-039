@@ -100,9 +100,12 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - `PhoneVerificationView`: 電話番号入力→SMSコード確認の2ステップ
   - Firebase Authの匿名アカウントへ電話番号クレデンシャルをリンク（uidは維持したまま昇格）し、
     Cloud Functions `syncVerificationStatus` がID Tokenの`phone_number`クレームを検証したうえで
-    `users/{uid}.isVerified`を更新（クライアントは直接書き込めない。`firestore.rules`参照）
+    `users/{uid}.isVerified`（UI表示用）とAuth Custom Claim `isVerified`（ルール判定用）の
+    両方を更新（クライアントは直接書き込めない。`firestore.rules`参照）
   - `spotComments`の作成は`isVerifiedUser()`ルールでゲート（設計書「本人確認済みユーザーのみ
-    コメント投稿可」を実際に強制）
+    コメント投稿可」を実際に強制）。Custom Claim参照方式のため、投稿のたびにFirestore
+    ドキュメントを`get()`する追加コストが無い。確認直後はクライアントが`getIdToken(true)`で
+    トークンを強制リフレッシュしてから反映される
   - 未接続時は`LocalVerificationService`が固定デモコード（`123456`）で確認フローを模擬
 - [x] 目的地入力画面（設計書「[目的地入力] → ルート検索結果」）: `DestinationPickerView`で
   道路網の模式図をタップして目的地を選択。`RouteSearchService.searchNearbyComfortRoute()`に
@@ -125,8 +128,6 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 ## このセッションで実装していない範囲（次スプリント）
 
-- 本人確認のcustom claim化（現状はFirestoreの`users/{uid}.isVerified`を都度読みに行く方式。
-  頻繁に参照する場合はcustom claimへ載せ替えを検討）
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
 - フォアグラウンド通知バナーの高度化（`SnackBar`ではなく専用オーバーレイUI・複数通知のキュー表示等）
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装

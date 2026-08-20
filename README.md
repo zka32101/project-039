@@ -16,7 +16,7 @@
   未接続時は自動フォールバック）、
   設定・ペイウォール画面（RevenueCat接続、未接続時はデモ購入へ自動フォールバック）、
   Cloud Functions連携（経路探索は`RemoteRouteSearchService`経由でサーバー側実行）、
-  本人確認基盤（電話番号SMS認証、`isVerifiedUser()`でコメント投稿をゲート）、
+  本人確認基盤（電話番号SMS認証、Auth Custom Claim `isVerified`で`isVerifiedUser()`のコメント投稿ゲートを判定）、
   目的地入力画面（道路網の模式図をタップして選択）、
   プッシュ通知・お知らせ機能（トピック購読方式のFCM配信）を実装。
   詳細・セットアップ上の注意点は `app/README.md` を参照。
