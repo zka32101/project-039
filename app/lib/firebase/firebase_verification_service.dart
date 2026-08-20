@@ -10,6 +10,10 @@ import '../services/verification_service.dart';
 /// Cloud Functions（`syncVerificationStatus`）経由でFirestoreの`users/{uid}`へ
 /// 確認結果を反映する。**クライアントはisVerifiedを直接書き込めない**
 /// （`firestore.rules`参照。ID Tokenのphone_numberクレームをサーバー側で検証してから書き込む）。
+/// `isVerified`はFirestoreに加えAuth Custom Claimとしても設定され、`firestore.rules`の
+/// `isVerifiedUser()`はCustom Claimのみで判定する（Firestore `get()`を都度発生させない）。
+/// Custom Claimはトークン発行時点のスナップショットのため、確認直後は
+/// `getIdToken(true)`で強制リフレッシュしてから利用する必要がある（[_linkAndSync]参照）。
 class FirebaseVerificationService implements VerificationService {
   FirebaseVerificationService(this._auth, this._firestore, this._functions);
 
@@ -84,6 +88,11 @@ class FirebaseVerificationService implements VerificationService {
 
     final callable = _functions.httpsCallable('syncVerificationStatus');
     await callable.call();
+
+    // syncVerificationStatusが設定したisVerified Custom Claimは、トークン発行時点の
+    // スナップショットにしか反映されない。ここで強制リフレッシュしないと、確認直後に
+    // isVerifiedUser()判定を要するspotComments作成がfirestore.rulesで拒否されてしまう。
+    await user.getIdToken(true);
 
     return getProfile();
   }

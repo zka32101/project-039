@@ -12,6 +12,7 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getAuth } from 'firebase-admin/auth';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
@@ -204,11 +205,18 @@ export const onSpotCommentCreated = onDocumentCreated('spotComments/{commentId}'
 });
 
 // ------------------------------------------------------------------
-// syncVerificationStatus: 本人確認（電話番号認証）の結果をFirestoreへ反映
+// syncVerificationStatus: 本人確認（電話番号認証）の結果をFirestore＋Custom Claimへ反映
 // クライアントは`users/{uid}`へ直接書き込めない（firestore.rules参照）。
 // Firebase Authが発行するID Tokenの`phone_number`クレーム（電話番号クレデンシャルを
 // リンクした本人のみ持つ）をサーバー側で検証してから書き込むことで、
 // 自己申告による本人確認済み偽装を防ぐ。
+//
+// isVerifiedはFirestore(`users/{uid}.isVerified`、UI表示・プロフィール取得用)に加えて
+// Auth Custom Claim（`request.auth.token.isVerified`）としても設定する。
+// firestore.rulesの`isVerifiedUser()`はCustom Claimのみを参照するため、`spotComments`の
+// create許可判定にFirestoreの`get()`（追加課金・レイテンシの原因になる）が不要になる。
+// 【重要】Custom Claimはトークン発行時点でのスナップショットのため、付与後にクライアントが
+// `getIdToken(true)`で強制リフレッシュするまで反映されない（`firebase_verification_service.dart`参照）。
 // ------------------------------------------------------------------
 export const syncVerificationStatus = onCall(async (request) => {
   if (!request.auth) {
@@ -221,8 +229,9 @@ export const syncVerificationStatus = onCall(async (request) => {
       '電話番号クレデンシャルがリンクされていません。先にPhoneAuthCredentialをlinkWithCredentialしてください',
     );
   }
+  const uid = request.auth.uid;
 
-  await db.collection('users').doc(request.auth.uid).set(
+  await db.collection('users').doc(uid).set(
     {
       isVerified: true,
       verificationMethod: 'phone',
@@ -231,6 +240,13 @@ export const syncVerificationStatus = onCall(async (request) => {
     },
     { merge: true },
   );
+
+  // 既存クレームを消さないようマージしてから設定する
+  const existingUser = await getAuth().getUser(uid);
+  await getAuth().setCustomUserClaims(uid, {
+    ...existingUser.customClaims,
+    isVerified: true,
+  });
 
   return { isVerified: true, verificationMethod: 'phone' };
 });

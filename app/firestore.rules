@@ -7,7 +7,10 @@ rules_version = '2';
 // 設計方針:
 //  - RoadSegment(道路網ジオメトリ含む) / shadeSpots / brightnessSpots は誰でも閲覧可（地図表示に必要）
 //  - 投稿の作成は匿名認証済みユーザーであれば可能
-//  - 本人確認済みユーザーのみコメント投稿可（isVerifiedUser()参照）
+//  - 本人確認済みユーザーのみコメント投稿可（isVerifiedUser()参照）。判定はAuth Custom Claim
+//    （`request.auth.token.isVerified`）のみで行う。Firestoreドキュメントを都度get()すると
+//    ルール評価ごとに追加の読み取り課金・レイテンシが発生するため、Cloud Functions
+//    （`syncVerificationStatus`）がFirestore書き込みと同時にCustom Claimも設定する構成にしている。
 //  - status/moderationStatus等のモデレーション結果フィールドは、作成時は常に'pending'固定を要求し、
 //    'approved'/'rejected'への遷移はCloud Functions（Admin SDK、本ルールの制約を受けない）のみが行う
 //    （クライアントが自己承認できてしまう抜け道を塞ぐ）
@@ -16,9 +19,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isVerifiedUser(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid))
-        && get(/databases/$(database)/documents/users/$(uid)).data.isVerified == true;
+    // Custom Claimはトークン発行時点のスナップショットのため、本人確認直後は
+    // クライアント側で`getIdToken(true)`による強制リフレッシュが必要
+    // （`firebase_verification_service.dart`の`_linkAndSync`参照）。
+    function isVerifiedUser() {
+      return request.auth != null && request.auth.token.isVerified == true;
     }
 
     // 道路網ジオメトリ・スコア（Cloud Functionsのシード/バッチ処理のみが書き込む）
@@ -65,7 +70,7 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
         && request.resource.data.moderationStatus == 'pending'
-        && isVerifiedUser(request.auth.uid);
+        && isVerifiedUser();
       allow update, delete: if false;
     }
 
