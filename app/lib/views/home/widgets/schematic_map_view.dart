@@ -3,9 +3,11 @@ import '../../../models/road_segment.dart';
 import '../../../models/route_result.dart';
 import '../../../theme/app_theme.dart';
 
-/// 実地図タイル（Google Maps等）は本セッションのスコープ外（APIキー・課金設定が必要）のため、
-/// 道路網データをそのまま模式図として描画する。地図SDK差し替え時は
-/// このWidgetをGoogleMap等に置き換え、ルート・色付けのデータフローはそのまま流用できる。
+/// 実地図タイル未使用時（既定）のフォールバック表示。道路網データをそのまま模式図として描画する。
+/// Google Maps版（`RealMapRouteView`）はネイティブ側のAPIキー設定
+/// （`android/`/`ios/`ディレクトリ・`app/README.md`参照）が必要なため、
+/// `config/map_config.dart`の`useGoogleMapTiles`で明示的に有効化されない限りこちらを使う。
+/// ルート・色付けのデータフローは`RealMapRouteView`と共通（`RouteResult`/`RoadSegment`）。
 class SchematicMapView extends StatelessWidget {
   const SchematicMapView({super.key, required this.route, required this.currentLat, required this.currentLon});
 

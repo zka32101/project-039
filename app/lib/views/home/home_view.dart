@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../config/map_config.dart';
 import '../../models/route_result.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
@@ -9,6 +10,7 @@ import '../destination/destination_picker_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
 import '../settings/settings_view.dart';
+import 'widgets/real_map_route_view.dart';
 import 'widgets/schematic_map_view.dart';
 
 /// Aha Momentの中心画面。「現在地周辺の安心ルート即表示」。
@@ -274,7 +276,9 @@ class _ReadyView extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          SchematicMapView(route: route, currentLat: currentLat, currentLon: currentLon),
+          useGoogleMapTiles
+              ? RealMapRouteView(route: route, currentLat: currentLat, currentLon: currentLon)
+              : SchematicMapView(route: route, currentLat: currentLat, currentLon: currentLon),
           const SizedBox(height: 16),
           Row(
             children: [
