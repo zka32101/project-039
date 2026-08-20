@@ -103,7 +103,11 @@ announcements/{id}   = { title, body, createdAt }
   // 作成をトリガーにonAnnouncementCreatedが'announcements'トピックへFCM配信する
 rateLimits/{key}     = { windowStartMs, count }
   // searchRoute等の不正利用対策用カウンタ。keyは`searchRoute:${uid}`のような形式。
-  // Cloud Functions（Admin SDK）のみが読み書きする（クライアントからはread/writeとも拒否）
+  // Cloud Functions（Admin SDK）のみが読み書きする（クライアントからはread/writeとも拒否）。
+  // ドキュメント数は一意なuidの数に比例して増え続ける（自動削除は無し）。長期運用では
+  // Firestoreの TTL ポリシー（`windowStartMs`を元にした有効期限フィールドを追加して設定）や、
+  // 定期クリーンアップ用のスケジュール関数の追加を検討すること（現状はストレージコストが
+  // 小さいため未対応。次スプリント候補）
 ```
 
 ## セットアップ
@@ -126,10 +130,16 @@ firebase deploy --only functions,firestore:rules,firestore:indexes  # 本番デ�
 
 ## 既知の制約・次スプリントでの改善点
 
-- `searchRoute`は毎回`roadNodes`/`roadWays`全件を読み込んでグラフを再構築する（5分間の簡易
-  インスタンスキャッシュあり）。最近傍ノード探索自体は`src/spatialIndex.js`（緯度経度グリッド
-  分割インデックス）で全件走査から近傍セル走査へ置き換え済みだが、Firestoreからの読み込み自体を
-  地域分割・geohash等でクエリ側から絞り込む改善は未実装（実データ規模＝1都市分での再検証が必要）
+- `searchRoute`は`roadNodes`/`roadWays`/`roadSegments`全件を読み込んでグラフ・スコアを構築する
+  （ウォームインスタンス内で5分間キャッシュ、`GRAPH_CACHE_TTL_MS`）。以前は`roadSegments`の
+  スコアだけキャッシュ対象外で、認証済み・レート制限内の呼び出しであっても毎回全件スキャンが
+  発生していたが、グラフ本体と同じキャッシュへ統合し「5分に1回の全件読み取り」に抑えた
+  （開発側リソース消費対策。`loadCachedGraph`のコメント参照）。トレードオフとして、
+  投稿承認直後の反映まで最大5分のラグが生じる点に注意。最近傍ノード探索自体は
+  `src/spatialIndex.js`（緯度経度グリッド分割インデックス）で全件走査から近傍セル走査へ
+  置き換え済みだが、Firestoreからの読み込み自体を地域分割・geohash等でクエリ側から絞り込む
+  改善（ウォームインスタンスが無いコールドスタート直後の1回目の呼び出しコスト削減）は
+  未実装（実データ規模＝1都市分での再検証が必要）
 - `shadowCalcBatch`（`shadowScore.js`）は、建物群を`spatialIndex.js`で空間インデックス化し、
   各エッジについて「理論上その建物の影が到達しうる範囲」の建物のみを候補に絞り込むよう
   最適化済み（大規模合成データでの実測は`prototype/RESULTS_LARGE.md`参照。3600ノード規模で

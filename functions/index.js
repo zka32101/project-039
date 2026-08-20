@@ -47,6 +47,18 @@ const db = getFirestore();
 let _graphCache = null; // ウォームインスタンス間の簡易キャッシュ（TTLはconst参照）
 const GRAPH_CACHE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * グラフ・空間インデックス・区間スコア（roadSegments）をまとめてキャッシュする。
+ *
+ * 【開発側リソース消費対策】以前は`roadSegments`全件スキャン（`loadRoadSegmentScores`）を
+ * `searchRoute`の呼び出しのたびに毎回実行していた。呼び出し側にレート制限を設けても、
+ * 許可された呼び出し1回ごとにFirestoreの全件読み取りが発生する構造自体は変わらず、
+ * 実データ規模（数万件のroadSegments）では呼び出し回数に比例してFirestore読み取り課金・
+ * レイテンシが増大する。グラフ本体と同じTTL（5分）でスコアもまとめてキャッシュすることで、
+ * ウォームインスタンスが生きている間は「5分に1回の全件読み取り」に抑える
+ * （引き換えに、承認直後の投稿が経路探索へ反映されるまで最大5分のラグが生じる。
+ * グラフ本体のキャッシュで既に許容していたラグと同じ性質のトレードオフ）。
+ */
 async function loadCachedGraph() {
   const now = Date.now();
   if (_graphCache && now - _graphCache.loadedAt < GRAPH_CACHE_TTL_MS) {
@@ -57,6 +69,19 @@ async function loadCachedGraph() {
   // 最近傍ノード探索を全件走査からグリッド走査へ置き換えるための空間インデックス。
   // グラフと同じTTLでキャッシュし、実データ規模でもリクエストごとの再構築を避ける。
   const spatialIndex = buildSpatialIndex(graph.nodeById.values());
+
+  const scores = await loadRoadSegmentScores(db);
+  for (const edge of graph.edges) {
+    edge.shadowScore = scores.get(edge.id) ?? 0;
+  }
+  // computeShadowScores()による自動計算のフォールバックは、roadSegmentsに
+  // baseShadowScoreが未投入の場合のみ使う（通常はshadowCalcBatchが事前計算済みの想定）
+  if (scores.size === 0) {
+    const buildings = await loadBuildings(db);
+    const shadowScores = computeShadowScores(graph, buildings, new Date());
+    for (const edge of graph.edges) edge.shadowScore = shadowScores.get(edge.id) ?? 0;
+  }
+
   _graphCache = { graph, spatialIndex, loadedAt: now };
   return _graphCache;
 }
@@ -82,21 +107,11 @@ export const searchRoute = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'originLat/originLon/destLat/destLonは数値で指定してください');
   }
 
+  // graph.edges[].shadowScoreはloadCachedGraph()内でキャッシュ済みのroadSegmentsスコアが
+  // 反映されている（上記コメント参照。呼び出しのたびに全件再読み込みはしない）。
   const { graph, spatialIndex } = await loadCachedGraph();
   if (graph.nodeById.size === 0) {
     throw new HttpsError('failed-precondition', '道路網データが投入されていません（seed未実施の可能性）');
-  }
-
-  const scores = await loadRoadSegmentScores(db);
-  for (const edge of graph.edges) {
-    edge.shadowScore = scores.get(edge.id) ?? 0;
-  }
-  // computeShadowScores()による自動計算のフォールバックは、roadSegmentsに
-  // baseShadowScoreが未投入の場合のみ使う（通常はshadowCalcBatchが事前計算済みの想定）
-  if (scores.size === 0) {
-    const buildings = await loadBuildings(db);
-    const shadowScores = computeShadowScores(graph, buildings, new Date());
-    for (const edge of graph.edges) edge.shadowScore = shadowScores.get(edge.id) ?? 0;
   }
 
   const originId = nearestNodeIdIndexed(spatialIndex, originLat, originLon);

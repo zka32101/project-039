@@ -55,6 +55,10 @@
    常に人力承認を必須とする荒らし対策付き）。加えて`searchRoute`の不正利用対策
    （認証必須化＋レート制限）を実装し、comfortScoreの機械的な収集による悪用リスクを緩和した
    （詳細は `functions/README.md` 参照）
+8. 開発側リソース消費対策として、`searchRoute`が`roadSegments`（区間ごとのスコア）を
+   呼び出しのたびに全件スキャンしていた問題を修正。グラフ本体と同じ5分間キャッシュへ統合し、
+   認証済み・レート制限内の呼び出しであっても実質「5分に1回の全件読み取り」に抑えた
+   （`functions/index.js`の`loadCachedGraph`、詳細は `functions/README.md` 参照）
 
 ## 次のアクション
 
