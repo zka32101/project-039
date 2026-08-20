@@ -93,8 +93,12 @@ firebase deploy --only functions,firestore:rules        # 本番デプロイ
   インスタンスキャッシュあり）。最近傍ノード探索自体は`src/spatialIndex.js`（緯度経度グリッド
   分割インデックス）で全件走査から近傍セル走査へ置き換え済みだが、Firestoreからの読み込み自体を
   地域分割・geohash等でクエリ側から絞り込む改善は未実装（実データ規模＝1都市分での再検証が必要）
-- `shadowCalcBatch`は全エッジ×全建物の総当たりに近い実装（`shadowScore.js`参照）。
-  広域展開時は空間インデックスでの最適化が必要
+- `shadowCalcBatch`（`shadowScore.js`）は、建物群を`spatialIndex.js`で空間インデックス化し、
+  各エッジについて「理論上その建物の影が到達しうる範囲」の建物のみを候補に絞り込むよう
+  最適化済み（大規模合成データでの実測は`prototype/RESULTS_LARGE.md`参照。3600ノード規模で
+  約1秒→約350msに短縮）。ただし絞り込み半径は「最も高い建物」基準の上限値のため、
+  極端に高い建物が1棟でも混在すると効果が薄れる。実データ規模（数万エッジ×数万建物）での
+  再検証は引き続き必要
 - モデレーション設定（`config/moderation`）は、`syncModerationConfigFromRemoteConfig`
   （1時間おきのスケジュール実行）がRemote Configテンプレートから自動反映するように
   なった（`src/remoteConfigSync.js`）。トリガー方式ではなくポーリング方式のため、

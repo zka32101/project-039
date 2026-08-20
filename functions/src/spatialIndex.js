@@ -90,6 +90,31 @@ export function nearestNodeIdIndexed(index, lat, lon) {
   return bestId;
 }
 
+/**
+ * インデックス化された要素のうち、(lat, lon)を中心とした一辺2*radiusDegの正方形の
+ * バウンディングボックス内にあるものを候補として返す（円形の厳密な絞り込みではない）。
+ * `shadowScore.js`が「エッジ近傍の建物のみ」に絞り込む用途のように、呼び出し側が
+ * 候補集合に対して厳密な距離・角度判定を行うことを前提にした緩い（が漏れの無い）フィルタ。
+ * @returns {Array<{id: string, lat: number, lon: number}>}
+ */
+export function itemsWithinBoundingBoxIndexed(index, lat, lon, radiusDeg) {
+  const { cellSizeDeg, cells } = index;
+  if (cells.size === 0) return [];
+
+  const cx = Math.floor(lon / cellSizeDeg);
+  const cy = Math.floor(lat / cellSizeDeg);
+  const cellSpan = Math.ceil(radiusDeg / cellSizeDeg);
+
+  const results = [];
+  for (let gx = -cellSpan; gx <= cellSpan; gx++) {
+    for (let gy = -cellSpan; gy <= cellSpan; gy++) {
+      const bucket = cells.get(`${cx + gx}:${cy + gy}`);
+      if (bucket) results.push(...bucket);
+    }
+  }
+  return results;
+}
+
 function* ringOffsets(ring) {
   if (ring === 0) {
     yield [0, 0];
