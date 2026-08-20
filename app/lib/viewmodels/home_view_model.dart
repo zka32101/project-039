@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/route_result.dart';
+import '../services/route_search_service.dart' show RouteSearchException;
 import 'providers.dart';
 
 sealed class HomeState {
@@ -95,6 +96,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
         isOptimizedRouteEnabled: _optimizedRouteEnabled,
         hasCustomDestination: destination != null,
       );
+    } on RouteSearchException catch (e) {
+      // レート制限超過等、そのまま利用者に見せてよい文言を持つ例外
+      // （`RemoteRouteSearchService`参照）。
+      state = HomeError(e.message);
     } catch (e) {
       state = HomeError('ルート検索に失敗しました: $e');
     }

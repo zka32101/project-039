@@ -22,7 +22,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 
 | 関数名 | トリガー | 役割 |
 |---|---|---|
-| `searchRoute` | Callable (`onCall`) | 重み付き最短経路探索。Flutterアプリの`RemoteRouteSearchService`から呼び出される |
+| `searchRoute` | Callable (`onCall`) | 重み付き最短経路探索。Flutterアプリの`RemoteRouteSearchService`から呼び出される（認証必須、レート制限あり） |
 | `shadowCalcBatch` | Schedule（3時間毎） | 建物×太陽角度から`roadSegments`の`baseShadowScore`を再計算 |
 | `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち、連投レート制限含む）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
@@ -66,6 +66,19 @@ Custom Claimはトークン発行時点のスナップショットのため、�
 （`autoApproveAnonymous`）に関わらず常に'pending'（人力承認キュー）に留め置く
 （`moderationLogic.js`参照）。上記のレート制限とは独立した、この投稿種別固有の追加防御。
 
+**`searchRoute`の不正利用対策（大量呼び出しによるスコアの機械的な収集を防ぐ）**: 「人通りが
+少ない」等の主観投稿が地図のcomfortScoreに混ざるため、これを悪用されると「人が少ない場所を
+探す」目的で使われるリスクがある。アプリのUI上には都市全体を俯瞰する画面は無いが、
+`searchRoute`（誰でも呼べるCallable Function）自体には従来レート制限が無く、任意の起点・
+終点で大量に呼び出せばcomfortScoreを機械的に収集できてしまっていた。対応として、
+(1) `request.auth`が無い呼び出しを拒否（匿名認証済みであることを必須化）、
+(2) `request.auth.uid`をキーにした固定ウィンドウ方式のレート制限（既定: 1分間に30回まで、
+`SEARCH_ROUTE_RATE_LIMIT_WINDOW_MS`/`SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS`参照）を追加した
+（`rateLimiting.js`の`checkAndIncrementRateLimit`）。カウンタは`rateLimits/{key}`
+Firestoreドキュメントで管理し、`firestore.rules`でクライアントからの直接読み書きを拒否している。
+**完全な防止ではなく抑止策**である点に注意（同一デバイスで匿名アカウントを都度作り直す等の
+迂回は技術的に可能。Firebase App Check等、より強固な対策の導入は次スプリントの検討候補）。
+
 ## Firestoreコレクション構成
 
 ```
@@ -88,6 +101,9 @@ users/{uid}          = { isVerified, verificationMethod, phoneNumber, updatedAt 
 announcements/{id}   = { title, body, createdAt }
   // 運営が管理コンソール等から作成する想定（クライアントは作成不可）。
   // 作成をトリガーにonAnnouncementCreatedが'announcements'トピックへFCM配信する
+rateLimits/{key}     = { windowStartMs, count }
+  // searchRoute等の不正利用対策用カウンタ。keyは`searchRoute:${uid}`のような形式。
+  // Cloud Functions（Admin SDK）のみが読み書きする（クライアントからはread/writeとも拒否）
 ```
 
 ## セットアップ

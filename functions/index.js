@@ -23,7 +23,13 @@ import { computeShadowScores } from './src/shadowScore.js';
 import { searchRoute as searchRouteEngine } from './src/routeSearch.js';
 import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from './src/firestoreRoadNetwork.js';
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
-import { exceedsRateLimit, countRecentSubmissions } from './src/rateLimiting.js';
+import {
+  exceedsRateLimit,
+  countRecentSubmissions,
+  checkAndIncrementRateLimit,
+  SEARCH_ROUTE_RATE_LIMIT_WINDOW_MS,
+  SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS,
+} from './src/rateLimiting.js';
 import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
@@ -56,6 +62,21 @@ async function loadCachedGraph() {
 }
 
 export const searchRoute = onCall(async (request) => {
+  // 匿名認証済みであることを必須にする（他のCloud Functionsと同じ前提）。加えて、
+  // request.auth.uidをレート制限のキーにすることで、大量呼び出しによるcomfortScoreの
+  // 機械的な収集（`rateLimiting.js`冒頭のコメント参照）のコストを引き上げる。
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const allowed = await checkAndIncrementRateLimit(db, `searchRoute:${request.auth.uid}`, {
+    windowMs: SEARCH_ROUTE_RATE_LIMIT_WINDOW_MS,
+    maxRequests: SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    throw new HttpsError('resource-exhausted', '短時間に検索が集中しています。しばらく待ってから再度お試しください');
+  }
+
   const { originLat, originLon, destLat, destLon, shadeWeight } = request.data ?? {};
   if ([originLat, originLon, destLat, destLon].some((v) => typeof v !== 'number')) {
     throw new HttpsError('invalid-argument', 'originLat/originLon/destLat/destLonは数値で指定してください');

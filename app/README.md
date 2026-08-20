@@ -186,6 +186,13 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     APIキー設定（AndroidManifest.xml・AppDelegate.swift）はこのセッションでは行えていない。
     ローカルでの追加設定が必須（上記「セットアップ上の重要な注記」参照）
   - 住所・地名検索（Geocoding API）は引き続き未実装
+- [x] `searchRoute`の不正利用対策（サーバー側で認証必須化＋レート制限）:
+  `RemoteRouteSearchService`は呼び出し前に`AuthService.ensureSignedIn()`を再試行するように変更
+  （`main.dart`起動時の匿名サインインが失敗していた場合の保険。失敗しても例外にはせず、
+  後続のCallable呼び出しが`'unauthenticated'`で失敗した場合はオフライン相当としてキャッシュへ
+  フォールバックする）。レート制限超過時（`'resource-exhausted'`）は`RouteSearchException`で
+  分かりやすい文言に差し替えてから`HomeViewModel`のエラー表示に渡す。
+  詳細な背景は`functions/README.md`「`searchRoute`の不正利用対策」参照
 
 ## このセッションで実装していない範囲（次スプリント）
 

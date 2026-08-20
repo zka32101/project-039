@@ -39,16 +39,16 @@ final locationServiceProvider = Provider<LocationService>((ref) => LocationServi
 
 final roadNetworkRepositoryProvider = Provider<RoadNetworkRepository>((ref) => RoadNetworkRepository());
 
-final routeSearchServiceProvider = Provider<RouteSearchService>((ref) {
-  return ref.watch(firebaseAvailableProvider)
-      ? RemoteRouteSearchService(FirebaseFunctions.instance)
-      : LocalRouteSearchService(ref.watch(roadNetworkRepositoryProvider));
-});
-
 final authServiceProvider = Provider<AuthService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirebaseAuthAdapter(FirebaseAuth.instance)
       : LocalAuthService();
+});
+
+final routeSearchServiceProvider = Provider<RouteSearchService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? RemoteRouteSearchService(FirebaseFunctions.instance, ref.watch(authServiceProvider))
+      : LocalRouteSearchService(ref.watch(roadNetworkRepositoryProvider));
 });
 
 final remoteConfigServiceProvider = Provider<RemoteConfigService>((ref) {
