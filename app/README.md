@@ -140,10 +140,21 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - 【スコープ】道路網データ全体（実データ規模では数万エッジ）のキャッシュではなく、
     「直近の検索結果1件」の最小実装。ペイウォールの訴求文言・導線（プレミアム限定機能としての
     「オフライン地図」）は別途検討の余地あり
+- [x] 投稿確定時の演出強化: `widgets/checkmark_burst_animation.dart`（`CheckmarkBurstAnimation`）
+  - 波紋の広がり→円のスケールイン（`elasticOut`）→チェックマークのストローク描画、という
+    多段アニメーションを`AnimationController`+`CustomPainter`のみで実装し、演出開始と同時に
+    `SystemSound.play`（効果音）・`HapticFeedback.mediumImpact`（触覚）を鳴らす
+  - 【方針】`lottie`パッケージの追加は、このセッションがpub.devへのネットワークアクセスを
+    持たず`pub get`の成否を検証できないため見送った。効果音も同様の理由で、音声アセットファイル
+    （バイナリ）を用意しても実機再生を確認する手段が無いため、`audioplayers`等の追加ではなく
+    Flutter標準の`SystemSound`で代替している。デザインアセット・ローカル検証環境が揃った段階で
+    `lottie`パッケージへの置き換えを検討する
 
 ## このセッションで実装していない範囲（次スプリント）
 
-- Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
+- Lottieパッケージ本体の導入・専用の効果音アセット — 上記の通り、標準機能のみで代替した
+  簡易版が実装済み。デザインアセット確定・ローカル環境での`pub get`検証ができ次第、
+  `lottie`パッケージ＋専用音声ファイルへの置き換えを検討
 - フォアグラウンド通知バナーの複数通知キュー表示（現状は専用オーバーレイ化は済み。
   同時に複数のお知らせが届いた場合の重ね表示・キュー管理は未対応）
 - オフライン地図キャッシュの拡張（現状は「直近の検索結果1件」のみ。道路網データ全体の
@@ -209,7 +220,8 @@ lib/
     announcements/   // お知らせ一覧
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
-  widgets/           // PrimaryButton（二度押し防止）、ForegroundNotificationBanner（専用オーバーレイ）
+  widgets/           // PrimaryButton（二度押し防止）、ForegroundNotificationBanner（専用オーバーレイ）、
+                     // CheckmarkBurstAnimation（投稿確定演出）
 assets/
   sample_road_network.json // prototype/fixtures/tokyo_sample.json と同一の検証用データ
 firestore.rules       // Firestoreセキュリティルールのドラフト（未検証、デプロイ前に要検証）
