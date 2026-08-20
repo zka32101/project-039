@@ -89,14 +89,16 @@ firebase deploy --only functions,firestore:rules        # 本番デプロイ
 ## 既知の制約・次スプリントでの改善点
 
 - `searchRoute`は毎回`roadNodes`/`roadWays`全件を読み込んでグラフを再構築する（5分間の簡易
-  インスタンスキャッシュあり）。実データ規模では空間インデックス（地域分割・geohash等）による
-  クエリ絞り込みが必須になる可能性が高い
+  インスタンスキャッシュあり）。最近傍ノード探索自体は`src/spatialIndex.js`（緯度経度グリッド
+  分割インデックス）で全件走査から近傍セル走査へ置き換え済みだが、Firestoreからの読み込み自体を
+  地域分割・geohash等でクエリ側から絞り込む改善は未実装（実データ規模＝1都市分での再検証が必要）
 - `shadowCalcBatch`は全エッジ×全建物の総当たりに近い実装（`shadowScore.js`参照）。
   広域展開時は空間インデックスでの最適化が必要
 - モデレーション設定は`config/moderation`ドキュメントとFlutter側のRemote Configで
   二重管理になっている（現状は手動同期が前提）。将来的にはRemote Config更新を
   トリガーにこのドキュメントへ反映する仕組みが望ましい
-- 集計ロジック（`src/aggregation.js`）は単純な移動平均のプレースホルダー。
-  設計書が意図する「重み付け合算」（投稿者の信頼スコア等）は未実装
+- 集計ロジック（`src/aggregation.js`）は、投稿件数（`shadeSampleCount`/`brightnessSampleCount`）に
+  応じて新規投稿1件あたりの重みを逓減させる加重移動平均（直近20件相当で頭打ち）に更新済み。
+  設計書が意図する「投稿者の信頼スコアでの重みづけ」はまだ未実装
 - NGワードフィルタ（`src/moderationLogic.js`）は検証用の最小限の辞書のみ。
   実運用では専用のモデレーションAPIへの置き換えを推奨
