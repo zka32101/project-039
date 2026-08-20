@@ -13,6 +13,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getAuth } from 'firebase-admin/auth';
+import { getRemoteConfig } from 'firebase-admin/remote-config';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
@@ -24,6 +25,7 @@ import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from '.
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
 import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
+import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
 import { buildAnnouncementMessage } from './src/announcementNotification.js';
 
@@ -130,6 +132,23 @@ export const shadowCalcBatch = onSchedule('every 3 hours', async () => {
     }
     await batch.commit();
   }
+});
+
+// ------------------------------------------------------------------
+// syncModerationConfigFromRemoteConfig: Remote Config → config/moderation の自動同期
+// 設計書の課題「モデレーション設定がRemote Config（アプリ表示・案内用）とFirestore
+// （サーバー側の実際の承認判定、`moderationLogic.js`参照）とで二重管理になっている」を解消する。
+// 運営者はRemote Configコンソールで`moderation_*`パラメータを更新するだけでよく、
+// このバッチが1時間おきに`config/moderation`へ反映する（クライアント側の
+// `minimumFetchInterval`も1時間のため、同程度の追従速度になる）。
+// ------------------------------------------------------------------
+export const syncModerationConfigFromRemoteConfig = onSchedule('every 1 hours', async () => {
+  const template = await getRemoteConfig().getTemplate();
+  const config = extractModerationConfigFromTemplate(template);
+  await db.collection('config').doc('moderation').set(
+    { ...config, syncedFromRemoteConfigAt: new Date() },
+    { merge: true },
+  );
 });
 
 // ------------------------------------------------------------------
