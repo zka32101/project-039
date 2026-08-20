@@ -34,6 +34,10 @@
 3. Cloud Functions側の集計ロジック・空間インデックスを高度化
    （投稿件数に応じて重みを逓減させる加重移動平均、最近傍ノード探索の
    全件走査→グリッドインデックス化。詳細は `functions/README.md` 参照）
+4. Remote Config⇔`config/moderation`の自動同期を実装
+   （`syncModerationConfigFromRemoteConfig`が1時間おきにRemote Configテンプレートを
+   `config/moderation`ドキュメントへ反映。従来は手動同期が前提だった。
+   詳細は `functions/README.md` 参照）
 
 ## 次のアクション
 

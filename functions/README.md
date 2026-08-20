@@ -29,6 +29,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
 | `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`とAuth Custom Claim（`isVerified`）を更新 |
 | `onAnnouncementCreated` | Firestore `onDocumentCreated` | お知らせ（設計書Step7）作成をトリガーに`announcements`トピック購読者へFCM配信 |
+| `syncModerationConfigFromRemoteConfig` | Schedule（1時間毎） | Remote Configテンプレートの`moderation_*`パラメータを`config/moderation`へ自動反映 |
 
 ## セキュリティ設計（クライアントを信用しない）
 
@@ -94,9 +95,11 @@ firebase deploy --only functions,firestore:rules        # 本番デプロイ
   地域分割・geohash等でクエリ側から絞り込む改善は未実装（実データ規模＝1都市分での再検証が必要）
 - `shadowCalcBatch`は全エッジ×全建物の総当たりに近い実装（`shadowScore.js`参照）。
   広域展開時は空間インデックスでの最適化が必要
-- モデレーション設定は`config/moderation`ドキュメントとFlutter側のRemote Configで
-  二重管理になっている（現状は手動同期が前提）。将来的にはRemote Config更新を
-  トリガーにこのドキュメントへ反映する仕組みが望ましい
+- モデレーション設定（`config/moderation`）は、`syncModerationConfigFromRemoteConfig`
+  （1時間おきのスケジュール実行）がRemote Configテンプレートから自動反映するように
+  なった（`src/remoteConfigSync.js`）。トリガー方式ではなくポーリング方式のため、
+  Remote Config更新から反映までに最大1時間のラグがある点に注意
+  （即時反映が必要になった場合はRemote Config管理APIのWebhook等への切り替えを検討）
 - 集計ロジック（`src/aggregation.js`）は、投稿件数（`shadeSampleCount`/`brightnessSampleCount`）に
   応じて新規投稿1件あたりの重みを逓減させる加重移動平均（直近20件相当で頭打ち）に更新済み。
   設計書が意図する「投稿者の信頼スコアでの重みづけ」はまだ未実装

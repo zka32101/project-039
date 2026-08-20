@@ -9,8 +9,10 @@
 
 /**
  * 地域別モデレーション設定を読み込む。
- * config/moderation ドキュメントを唯一の正とする（Remote Configの値とは現状手動同期。
- * 将来的にはRemote Config更新をトリガーにこのドキュメントへ反映する仕組みが望ましい＝次スプリント）。
+ * config/moderation ドキュメントを唯一の正とする。値自体は
+ * `syncModerationConfigFromRemoteConfig`（index.js）が1時間おきにRemote Configから
+ * 自動反映するため、運営者はRemote Configコンソールを更新するだけでよい
+ * （`remoteConfigSync.js`参照）。
  */
 export async function loadModerationConfig(db) {
   const doc = await db.collection('config').doc('moderation').get();
