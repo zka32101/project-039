@@ -10,6 +10,7 @@ import 'views/announcements/announcements_list_view.dart';
 import 'views/home/home_view.dart';
 import 'views/onboarding/onboarding_view.dart';
 import 'views/update_required/update_required_view.dart';
+import 'widgets/foreground_notification_banner.dart';
 
 class AnshinmichiApp extends ConsumerStatefulWidget {
   const AnshinmichiApp({super.key});
@@ -20,7 +21,6 @@ class AnshinmichiApp extends ConsumerStatefulWidget {
 
 class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
-  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription<AppNotification>? _foregroundMessageSubscription;
 
   @override
@@ -39,16 +39,15 @@ class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
   }
 
   void _showForegroundBanner(AppNotification notification) {
-    _scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text('${notification.title}\n${notification.body}'),
-        action: SnackBarAction(
-          label: '確認する',
-          onPressed: () => _navigatorKey.currentState?.push(
-            MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
-          ),
-        ),
-        duration: const Duration(seconds: 6),
+    // 専用オーバーレイでの表示に置き換え済み（旧SnackBar版からの変更点は
+    // widgets/foreground_notification_banner.dart 冒頭のコメント参照）。
+    final overlay = _navigatorKey.currentState?.overlay;
+    if (overlay == null) return;
+    showForegroundNotificationBanner(
+      overlay,
+      notification,
+      onTap: () => _navigatorKey.currentState?.push(
+        MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
       ),
     );
   }
@@ -57,7 +56,6 @@ class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
-      scaffoldMessengerKey: _scaffoldMessengerKey,
       title: 'あんしんみち',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),

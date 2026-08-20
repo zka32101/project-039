@@ -123,13 +123,18 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - `AnnouncementsListView`: Firestoreの`announcements`を新着順に一覧表示。
     ホーム画面AppBar・設定画面の両方から遷移可能
   - フォアグラウンド受信時は`AnshinmichiApp`が`PushNotificationService.foregroundMessages`を
-    購読し、`SnackBar`でアプリ内バナー表示（「確認する」タップで`AnnouncementsListView`へ遷移）。
+    購読し、`widgets/foreground_notification_banner.dart`の専用オーバーレイでアプリ内バナー表示
+    （画面上部にスライドイン、アイコン付き、タップで`AnnouncementsListView`へ遷移、
+    5秒後に自動消滅／✕タップで即消去）。当初`SnackBar`で実装していたが、画面下部固定で
+    ナビゲーション要素と競合しやすい・アイコン非対応・他のSnackBarと表示キューを共有してしまう
+    という制約があったため、`Overlay`への直接挿入方式に置き換えた。
     バックグラウンド/終了時の通知表示はFCM標準動作に任せている
 
 ## このセッションで実装していない範囲（次スプリント）
 
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
-- フォアグラウンド通知バナーの高度化（`SnackBar`ではなく専用オーバーレイUI・複数通知のキュー表示等）
+- フォアグラウンド通知バナーの複数通知キュー表示（現状は専用オーバーレイ化は済み。
+  同時に複数のお知らせが届いた場合の重ね表示・キュー管理は未対応）
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
@@ -191,7 +196,7 @@ lib/
     announcements/   // お知らせ一覧
     update_required/ // min_supported_version未達時の強制更新画面
   theme/             // ダークモード対応テーマ・安心スコアのカラーグラデーション
-  widgets/           // PrimaryButton（二度押し防止）
+  widgets/           // PrimaryButton（二度押し防止）、ForegroundNotificationBanner（専用オーバーレイ）
 assets/
   sample_road_network.json // prototype/fixtures/tokyo_sample.json と同一の検証用データ
 firestore.rules       // Firestoreセキュリティルールのドラフト（未検証、デプロイ前に要検証）
