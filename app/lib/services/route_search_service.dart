@@ -3,6 +3,16 @@ import 'road_graph_engine/graph.dart';
 import 'road_graph_engine/route_search.dart' as engine;
 import 'road_network_repository.dart';
 
+/// 経路探索に失敗した際、利用者にそのまま見せてよい文言を持つ例外
+/// （`SpotSubmissionException`と同じ考え方）。レート制限超過等、
+/// サーバー側のエラーコードをそのまま出すとノイズになるケースで使う。
+class RouteSearchException implements Exception {
+  RouteSearchException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// 経路探索サービスの抽象インターフェース。
 /// 設計書では経路探索・影計算はサーバー側（Cloud Functions）で実行する方針だが、
 /// 本セッションではAhaモーメント動線の検証を優先し、まずオンデバイス実装で
