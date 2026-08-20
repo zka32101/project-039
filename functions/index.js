@@ -23,6 +23,7 @@ import { searchRoute as searchRouteEngine } from './src/routeSearch.js';
 import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from './src/firestoreRoadNetwork.js';
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
 import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
+import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
 import { buildAnnouncementMessage } from './src/announcementNotification.js';
 
@@ -40,12 +41,15 @@ const GRAPH_CACHE_TTL_MS = 5 * 60 * 1000;
 async function loadCachedGraph() {
   const now = Date.now();
   if (_graphCache && now - _graphCache.loadedAt < GRAPH_CACHE_TTL_MS) {
-    return _graphCache.graph;
+    return _graphCache;
   }
   const { nodes, roads } = await loadRoadNetworkGeometry(db);
   const graph = buildGraph({ nodes, roads });
-  _graphCache = { graph, loadedAt: now };
-  return graph;
+  // 最近傍ノード探索を全件走査からグリッド走査へ置き換えるための空間インデックス。
+  // グラフと同じTTLでキャッシュし、実データ規模でもリクエストごとの再構築を避ける。
+  const spatialIndex = buildSpatialIndex(graph.nodeById.values());
+  _graphCache = { graph, spatialIndex, loadedAt: now };
+  return _graphCache;
 }
 
 export const searchRoute = onCall(async (request) => {
@@ -54,7 +58,7 @@ export const searchRoute = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'originLat/originLon/destLat/destLonは数値で指定してください');
   }
 
-  const graph = await loadCachedGraph();
+  const { graph, spatialIndex } = await loadCachedGraph();
   if (graph.nodeById.size === 0) {
     throw new HttpsError('failed-precondition', '道路網データが投入されていません（seed未実施の可能性）');
   }
@@ -71,8 +75,8 @@ export const searchRoute = onCall(async (request) => {
     for (const edge of graph.edges) edge.shadowScore = shadowScores.get(edge.id) ?? 0;
   }
 
-  const originId = nearestNodeId(graph, originLat, originLon);
-  const destId = nearestNodeId(graph, destLat, destLon);
+  const originId = nearestNodeIdIndexed(spatialIndex, originLat, originLon);
+  const destId = nearestNodeIdIndexed(spatialIndex, destLat, destLon);
   const result = searchRouteEngine(graph, new Map(graph.edges.map((e) => [e.id, e.shadowScore])), originId, destId, {
     shadeWeight: shadeWeight ?? 0.6,
   });
@@ -94,21 +98,6 @@ export const searchRoute = onCall(async (request) => {
     segments: buildSegmentBreakdown(graph, result.path),
   };
 });
-
-function nearestNodeId(graph, lat, lon) {
-  let bestId = null;
-  let bestDistSq = Infinity;
-  for (const node of graph.nodeById.values()) {
-    const dLat = node.lat - lat;
-    const dLon = node.lon - lon;
-    const distSq = dLat * dLat + dLon * dLon;
-    if (distSq < bestDistSq) {
-      bestDistSq = distSq;
-      bestId = node.id;
-    }
-  }
-  return bestId;
-}
 
 // ------------------------------------------------------------------
 // shadowCalcBatch: 建物×太陽角度の事前計算バッチ（スケジュール実行）

@@ -61,6 +61,8 @@ async function seed() {
       baseShadowScore: shadowScores.get(edge.id) ?? 0,
       aggregatedShadeScore: 0,
       aggregatedBrightnessScore: 0,
+      shadeSampleCount: 0,
+      brightnessSampleCount: 0,
       lastCalculatedAt: new Date(),
     });
   });
