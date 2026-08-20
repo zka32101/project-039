@@ -4,7 +4,7 @@ import 'package:anshinmichi/models/spot_type.dart';
 import 'package:anshinmichi/views/paint/widgets/spot_type_selector.dart';
 
 void main() {
-  testWidgets('SpotTypeSelector: 4種別すべてが表示され、タップで選択が通知される', (tester) async {
+  testWidgets('SpotTypeSelector: 全種別が表示され、タップで選択が通知される', (tester) async {
     SpotType? selected;
 
     await tester.pumpWidget(

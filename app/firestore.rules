@@ -56,10 +56,14 @@ service cloud.firestore {
 
     match /brightnessSpots/{spotId} {
       allow read: if true;
+      // reasonTypeは「夜の明るさ」('dark')と「人通りが少ない」('low_foot_traffic')投稿を区別する。
+      // 'low_foot_traffic'は主観的・偏見の影響を受けやすい投稿種別のため、Cloud Functions
+      // （handleSpotCreated）が地域のモデレーション設定に関わらず常に人力承認へ回す（荒らし対策）。
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
         && request.resource.data.status == 'pending'
-        && request.resource.data.brightnessLevel in ['dark', 'normal', 'bright'];
+        && request.resource.data.brightnessLevel in ['dark', 'normal', 'bright']
+        && request.resource.data.reasonType in ['dark', 'low_foot_traffic'];
       allow update, delete: if false;
     }
 

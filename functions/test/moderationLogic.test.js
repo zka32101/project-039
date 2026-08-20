@@ -30,3 +30,17 @@ test('decideInitialStatus: autoApproveAnonymous=trueならapproved', () => {
 test('decideInitialStatus: autoApproveAnonymous=falseならpending', () => {
   assert.equal(decideInitialStatus({ autoApproveAnonymous: false }), 'pending');
 });
+
+test('decideInitialStatus: requiresManualReview=trueなら、autoApproveAnonymous=trueでもpending', () => {
+  assert.equal(
+    decideInitialStatus({ autoApproveAnonymous: true }, { requiresManualReview: true }),
+    'pending',
+  );
+});
+
+test('decideInitialStatus: requiresManualReview=falseならautoApproveAnonymousの値に従う', () => {
+  assert.equal(
+    decideInitialStatus({ autoApproveAnonymous: true }, { requiresManualReview: false }),
+    'approved',
+  );
+});

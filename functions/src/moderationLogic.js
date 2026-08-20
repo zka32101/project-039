@@ -27,7 +27,15 @@ export async function loadModerationConfig(db) {
   };
 }
 
-export function decideInitialStatus(moderationConfig) {
+/**
+ * @param {{autoApproveAnonymous: boolean}} moderationConfig
+ * @param {{requiresManualReview?: boolean}} [options] `requiresManualReview: true`の場合、
+ *   地域のモデレーション設定に関わらず常に'pending'（人力承認キュー）に留め置く。
+ *   「人通りが少ない」等、客観的な観測（日陰・雨よけの有無）と異なり主観的・偏見の
+ *   影響を受けやすい投稿種別の荒らし対策として使う（`index.js`の`handleSpotCreated`参照）。
+ */
+export function decideInitialStatus(moderationConfig, options = {}) {
+  if (options.requiresManualReview) return 'pending';
   return moderationConfig.autoApproveAnonymous ? 'approved' : 'pending';
 }
 
