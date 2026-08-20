@@ -8,6 +8,7 @@ import '../../services/road_graph_engine/graph.dart';
 import '../../services/road_graph_engine/snap_to_road.dart';
 import '../../services/spot_submission_service.dart';
 import '../../viewmodels/providers.dart';
+import '../../widgets/checkmark_burst_animation.dart';
 import '../../widgets/primary_button.dart';
 import '../verification/phone_verification_view.dart';
 import 'widgets/paint_canvas.dart';
@@ -128,7 +129,8 @@ class _PaintSubmissionViewState extends ConsumerState<PaintSubmissionView> {
       analytics.logSpotSubmitted(type.name);
       if (comment != null) analytics.logCommentAdded();
 
-      HapticFeedback.mediumImpact();
+      // 効果音・触覚フィードバックは_SuccessStepのCheckmarkBurstAnimation側で
+      // 演出開始と同時に鳴らすため、ここでは呼ばない（二重再生防止）。
       if (!mounted) return;
       setState(() {
         _resultReflectMode = result.reflectMode;
@@ -336,13 +338,7 @@ class _SuccessStep extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.elasticOut,
-            builder: (context, value, child) => Transform.scale(scale: value, child: child),
-            child: Icon(Icons.check_circle, size: 96, color: type.color),
-          ),
+          CheckmarkBurstAnimation(color: type.color),
           const SizedBox(height: 20),
           Text(
             isImmediate ? '地図に反映されました！' : '投稿ありがとうございます',
