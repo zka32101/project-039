@@ -119,7 +119,8 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     トピック購読者へFCM配信
   - `AnnouncementsListView`: Firestoreの`announcements`を新着順に一覧表示。
     ホーム画面AppBar・設定画面の両方から遷移可能
-  - フォアグラウンド受信時のアプリ内バナー表示（flutter_local_notifications等）は未実装。
+  - フォアグラウンド受信時は`AnshinmichiApp`が`PushNotificationService.foregroundMessages`を
+    購読し、`SnackBar`でアプリ内バナー表示（「確認する」タップで`AnnouncementsListView`へ遷移）。
     バックグラウンド/終了時の通知表示はFCM標準動作に任せている
 
 ## このセッションで実装していない範囲（次スプリント）
@@ -127,7 +128,7 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - 本人確認のcustom claim化（現状はFirestoreの`users/{uid}.isVerified`を都度読みに行く方式。
   頻繁に参照する場合はcustom claimへ載せ替えを検討）
 - Lottieアニメーション・効果音（SE）— 確定演出は`TweenAnimationBuilder`+ハプティクスの簡易版で代替
-- フォアグラウンド受信時のアプリ内通知バナー表示（flutter_local_notifications等）
+- フォアグラウンド通知バナーの高度化（`SnackBar`ではなく専用オーバーレイUI・複数通知のキュー表示等）
 - オフライン地図の実キャッシュ — ペイウォールの訴求文言・導線のみ実装、実データキャッシュは未実装
 - 実地図タイル（Google Maps等）— 現状は道路網データを模式図として描画する`SchematicMapView`/`PaintCanvas`で代替
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
@@ -143,7 +144,8 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 
 ```
 lib/
-  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile, Announcement
+  models/            // RoadSegment, RouteResult, SpotType, SpotSubmission, ModerationConfig, UserProfile,
+                     // Announcement, AppNotification
   services/
     road_graph_engine/  // prototype/ の検証済みロジックのDart移植
                         // (geo/sunPosition/graph/shadowScore/routeSearch/snapToRoad)
@@ -205,6 +207,7 @@ test/
   phone_verification_view_test.dart   // 本人確認画面のwidget test
   destination_picker_view_test.dart   // 目的地入力画面のwidget test
   announcements_list_view_test.dart   // お知らせ一覧のwidget test
+  firebase_push_notification_service_test.dart // RemoteMessage→AppNotification変換のunit test
 ```
 
 Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。
