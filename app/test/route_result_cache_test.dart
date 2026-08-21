@@ -130,4 +130,45 @@ void main() {
       );
     });
   });
+
+  group('selectBestCacheEntryIndex', () {
+    final now = DateTime(2026, 8, 20, 12, 0).millisecondsSinceEpoch;
+
+    test('エントリが無ければnull', () {
+      expect(selectBestCacheEntryIndex([], 35.681, 139.767, now), null);
+    });
+
+    test('使用可能なエントリが無ければnull（全て遠方）', () {
+      final entries = [
+        (lat: 36.0, lon: 140.0, savedAtEpochMs: now),
+        (lat: 37.0, lon: 141.0, savedAtEpochMs: now),
+      ];
+      expect(selectBestCacheEntryIndex(entries, 35.681, 139.767, now), null);
+    });
+
+    test('使用可能なエントリが1件のみならそのインデックスを返す', () {
+      final entries = [
+        (lat: 36.0, lon: 140.0, savedAtEpochMs: now), // 遠方（使用不可）
+        (lat: 35.681, lon: 139.767, savedAtEpochMs: now), // 使用可能
+      ];
+      expect(selectBestCacheEntryIndex(entries, 35.681, 139.767, now), 1);
+    });
+
+    test('複数エリアが使用可能な場合、最も新しいエントリを優先する', () {
+      final entries = [
+        (lat: 35.681, lon: 139.767, savedAtEpochMs: now - 60000), // 自宅エリア（1分前）
+        (lat: 35.682, lon: 139.768, savedAtEpochMs: now), // 職場エリア（たった今）
+      ];
+      // 両エリアとも十分近い（数百m以内）が、より新しい方＝インデックス1を選ぶ
+      expect(selectBestCacheEntryIndex(entries, 35.6815, 139.7675, now), 1);
+    });
+
+    test('保存時刻が同じ場合は現在地に近い方を優先する', () {
+      final entries = [
+        (lat: 35.69, lon: 139.767, savedAtEpochMs: now), // やや遠い
+        (lat: 35.681, lon: 139.767, savedAtEpochMs: now), // 現在地そのもの
+      ];
+      expect(selectBestCacheEntryIndex(entries, 35.681, 139.767, now), 1);
+    });
+  });
 }

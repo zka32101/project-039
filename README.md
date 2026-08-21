@@ -66,6 +66,10 @@
 10. フォアグラウンド通知バナーの複数通知キュー表示を実装。お知らせがほぼ同時に複数届いても
     重ねて表示せず、`ForegroundBannerQueue`が常に1件だけを直列に表示する
     （`app/lib/widgets/foreground_notification_banner.dart`、詳細は `app/README.md` 参照）
+11. オフライン地図キャッシュを「直近ルート1件」から「複数エリア分（既定5件）」の保持に拡張。
+    自宅・職場など、よく使う数か所を行き来する利用パターンに対応（同一エリアは重複させず
+    上書き、複数該当時は最も新しいものを選択。`app/lib/services/route_result_cache.dart`、
+    詳細は `app/README.md` 参照）
 
 ## 次のアクション
 

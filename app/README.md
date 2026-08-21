@@ -157,17 +157,21 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - `ForegroundBannerQueue`（同ファイル）が複数通知のキュー表示に対応。お知らせがほぼ同時に
     複数届いても重ねて表示せず、常に1件だけを表示し、表示中の1件が消えた（自動タイムアウト／
     タップ／✕）タイミングでキューの次の1件を表示する直列キューとして動作する
-- [x] オフライン地図の実キャッシュ（直近ルート1件分）: `services/route_result_cache.dart`
+- [x] オフライン地図の実キャッシュ（直近ルート、複数エリア分）: `services/route_result_cache.dart`
   （`RouteResultCache`インターフェース＋`SharedPreferencesRouteResultCache`）
   - `RemoteRouteSearchService`が`searchRoute`の成功結果を毎回ローカルへ保存。次回呼び出しが
     ネットワークエラー（`FirebaseFunctionsException(code: 'unavailable')`や純粋な通信断）で
     失敗した場合、直近の成功結果を`RouteResult.isFromCache=true`として返す
   - キャッシュの有効性は`isCacheUsable()`（位置1.5km以内・保存後24時間以内）で判定。
     範囲外・期限切れのキャッシュは使わずそのままエラーを投げる（誤った古い情報を出さないため）
+  - 最大`SharedPreferencesRouteResultCache.maxEntries`（既定5）件までのエリアを保持する
+    多エントリキャッシュに拡張済み。自宅・職場など、よく使う数か所を行き来する利用パターンを
+    想定。同一エリア（300m以内）への再検索は新しい結果で上書きし、重複エントリは積み上がらない。
+    複数エリアが使用可能な場合は`selectBestCacheEntryIndex()`が最も新しいものを選ぶ
   - `HomeView`は`route.isFromCache`のとき「オフラインのため前回の検索結果を表示中です」バナーを表示
-  - 【スコープ】道路網データ全体（実データ規模では数万エッジ）のキャッシュではなく、
-    「直近の検索結果1件」の最小実装。ペイウォールの訴求文言・導線（プレミアム限定機能としての
-    「オフライン地図」）は別途検討の余地あり
+  - 【スコープ】道路網データ全体（実データ規模では数万エッジ）そのもののローカルキャッシュ
+    ではなく、あくまで「検索結果（ルート単位）」の複数保持に留まる。ペイウォールの訴求文言・
+    導線（プレミアム限定機能としての「オフライン地図」）は別途検討の余地あり
 - [x] 投稿確定時の演出強化: `widgets/checkmark_burst_animation.dart`（`CheckmarkBurstAnimation`）
   - 波紋の広がり→円のスケールイン（`elasticOut`）→チェックマークのストローク描画、という
     多段アニメーションを`AnimationController`+`CustomPainter`のみで実装し、演出開始と同時に
@@ -202,8 +206,8 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - Lottieパッケージ本体の導入・専用の効果音アセット — 上記の通り、標準機能のみで代替した
   簡易版が実装済み。デザインアセット確定・ローカル環境での`pub get`検証ができ次第、
   `lottie`パッケージ＋専用音声ファイルへの置き換えを検討
-- オフライン地図キャッシュの拡張（現状は「直近の検索結果1件」のみ。道路網データ全体の
-  ローカルキャッシュ・複数エリア分の保持は未実装）
+- オフライン地図キャッシュのさらなる拡張（現状は「検索結果を複数エリア分」保持する方式まで
+  実装済み。道路網データそのもののローカルキャッシュ＝完全なオフライン経路探索は未実装）
 - 実地図タイルのネイティブ設定（`android/`/`ios/`ディレクトリの生成・APIキー登録）— Dart側の
   実装（`RealMapRouteView`）は完了。ローカルで`flutter create .`後にAPIキーを設定するまでは
   既定の`SchematicMapView`が使われる（上記参照）
@@ -241,7 +245,7 @@ lib/
     app_version.dart             // min_supported_version比較ロジック
     subscription_service.dart    // インターフェース＋オンデバイスのデモ購入フォールバック
     notification_preference_storage.dart
-    route_result_cache.dart      // 直近ルート1件のオフラインキャッシュ（位置・鮮度チェック込み）
+    route_result_cache.dart      // 直近ルートのオフラインキャッシュ（複数エリア分、位置・鮮度チェック込み）
     location_service.dart
     analytics_service.dart
     onboarding_storage.dart
