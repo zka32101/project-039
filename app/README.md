@@ -223,11 +223,21 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   `functions/README.md`「投稿の相互チェック」参照）
   - `SpotVoteService`（インターフェース＋Firebase未接続時は例外を投げる実装＋
     `FirestoreSpotVoteService`）をクライアント側の呼び出し口として用意
-  - 【スコープ】バックエンド（Cloud Functions・Firestoreルール）とクライアント側の呼び出し口は
-    実装済みだが、投票ボタンを表示するUI（個々の投稿を一覧・詳細表示する画面）は
-    このセッションでは未実装。地図・投稿一覧のどこに投票導線を置くかは別途検討が必要なため、
-    ビジュアル確認手段が無いこのセッションでは新規UIの追加を避け、バックエンドのみを
-    先行実装する形にとどめた
+- [x] 投稿一覧画面「投稿を確認」（`views/spots/spots_list_view.dart`）: 承認済み投稿
+  （`shadeSpots`/`brightnessSpots`横断）を一覧表示し、確認投票／通報ボタンから
+  `SpotVoteService.vote()`を呼び出せる
+  - `SpotListService`（インターフェース＋Firebase未接続時は空リストを返す実装＋
+    `FirestoreSpotListService`）を新設。2コレクションを個別に問い合わせてから
+    `createdAt`降順でマージする（単一クエリで横断できないFirestoreの制約に対応。
+    `countRecentSubmissions`と同じ考え方）
+  - `AnnouncementsListView`/`SpotCommentsListView`と同じ「取得専用・一覧表示」の構成を
+    踏襲しつつ、各行に確認（✓）／通報（🚩）ボタンを追加。投票結果は`voteSpot`の
+    レスポンス確定後にリストを再取得して`votes`/`reportCount`表示を更新する。
+    多重タップによる二重送信は投票中IDの管理で防ぐ
+  - `status`＋`createdAt`の複合クエリのため`firestore.indexes.json`に新規インデックスを
+    2件追加（`shadeSpots`/`brightnessSpots`それぞれ、`spotComments`と同様の注意点）
+  - 【スコープ】特定の道路区間・地図上の位置に基づく絞り込みは行わず、直近の承認済み投稿を
+    横断的に一覧表示するのみ（「みんなの声」画面と同じ設計判断）
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -242,9 +252,6 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - コメント（`spotComments`）の特定投稿・道路区間への紐付け表示（地図上のタップでその場所の
   コメントだけを見る等）— 「みんなの声」画面は横断的な一覧表示のみで、地図側のタップ操作
   という新規UIインタラクションの実装・検証はこのセッションでは行っていない
-- 投稿の相互チェック（確認投票／通報）の投票ボタンUI — バックエンド（`voteSpot`）と
-  クライアント側の呼び出し口（`SpotVoteService`）は実装済みだが、個々の投稿を一覧・詳細表示し
-  投票ボタンを置く画面はこのセッションでは未実装（上記のコメント紐付け表示と同様の理由）
 - `PaintCanvas`（投稿時のなぞり操作）は引き続き模式図ベース。投稿UIを実地図タイル上での
   なぞり操作に置き換えるかは別途検討
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）
