@@ -81,6 +81,10 @@
     連投できてしまう抜け穴だった。NGワードフィルタでapproved判定されたコメントでも、直近10分間に
     一定件数を超えていれば'pending'（人力確認待ち）に差し替える
     （`functions/src/rateLimiting.js`、詳細は `functions/README.md` 参照）
+14. コメント閲覧画面「みんなの声」を追加。従来`spotComments`は投稿時に保存されるだけで
+    閲覧できるUIが無かった（書き込み専用機能）。承認済みコメントを新着順に一覧表示する画面を
+    ホーム画面AppBarから遷移できるようにした（特定投稿・道路区間への紐付け表示は次スプリント、
+    `app/lib/views/comments/spot_comments_list_view.dart`、詳細は `app/README.md` 参照）
 
 ## 次のアクション
 

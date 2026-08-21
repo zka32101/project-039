@@ -202,6 +202,21 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   フォールバックする）。レート制限超過時（`'resource-exhausted'`）は`RouteSearchException`で
   分かりやすい文言に差し替えてから`HomeViewModel`のエラー表示に渡す。
   詳細な背景は`functions/README.md`「`searchRoute`の不正利用対策」参照
+- [x] コメント閲覧画面（「みんなの声」、`views/comments/spot_comments_list_view.dart`）:
+  `SpotCommentService`（インターフェース＋Firebase未接続時は空リストを返す実装＋
+  `FirestoreSpotCommentService`）の二本立て
+  - 投稿時に付けられるコメント（`spotComments`）はこれまで書き込み専用（保存されるだけで
+    閲覧するUIが無かった）という欠落があった。本画面はNGワードフィルタで承認済み
+    （`moderationStatus == 'approved'`）のコメントを新着順に一覧表示する
+  - `AnnouncementsListView`と全く同じ「取得専用・一覧表示」の構成を踏襲（`ListView.separated`、
+    プルリフレッシュ、空状態・エラー表示）。ホーム画面AppBarから遷移可能
+  - 【スコープ】特定の投稿（`shadeSpots`/`brightnessSpots`）や道路区間に紐づけた表示
+    （地図上のタップでその場所のコメントだけを見る、等）ではなく、あくまで直近の承認済み
+    コメントを横断的に一覧表示するのみ。特定投稿への紐付け表示は、地図側のタップ操作
+    という新規UIインタラクションの実装・検証が別途必要なため次スプリント以降の課題とした
+  - `moderationStatus`＋`createdAt`の複合クエリのため`firestore.indexes.json`に新規
+    インデックスを追加（デプロイを忘れると`FAILED_PRECONDITION`エラーになる点は
+    `countRecentSubmissions`と同様。`functions/README.md`「セットアップ」参照）
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -213,6 +228,9 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - 実地図タイルのネイティブ設定（`android/`/`ios/`ディレクトリの生成・APIキー登録）— Dart側の
   実装（`RealMapRouteView`）は完了。ローカルで`flutter create .`後にAPIキーを設定するまでは
   既定の`SchematicMapView`が使われる（上記参照）
+- コメント（`spotComments`）の特定投稿・道路区間への紐付け表示（地図上のタップでその場所の
+  コメントだけを見る等）— 「みんなの声」画面は横断的な一覧表示のみで、地図側のタップ操作
+  という新規UIインタラクションの実装・検証はこのセッションでは行っていない
 - `PaintCanvas`（投稿時のなぞり操作）は引き続き模式図ベース。投稿UIを実地図タイル上での
   なぞり操作に置き換えるかは別途検討
 - petit_core / petit_ui — 台帳確認の結果、本セッションでは未使用（存在しないリポジトリのため単体実装）

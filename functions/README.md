@@ -134,8 +134,10 @@ firebase deploy --only functions,firestore:rules,firestore:indexes  # 本番デ�
 ```
 
 **注意**: `firestore.indexes.json`の複合インデックス（`shadeSpots`/`brightnessSpots`の
-`submitterId`+`createdAt`、連投レート制限判定用、下記参照）は`firestore:indexes`のデプロイを
-忘れると`countRecentSubmissions`のクエリが失敗する（`FAILED_PRECONDITION`エラー）。
+`submitterId`+`createdAt`、連投レート制限判定用、下記参照。加えて`spotComments`の
+`moderationStatus`+`createdAt`、「みんなの声」画面の一覧取得用）は`firestore:indexes`の
+デプロイを忘れるとそれぞれ`countRecentSubmissions`・`FirestoreSpotCommentService.fetchRecent`の
+クエリが失敗する（`FAILED_PRECONDITION`エラー）。
 
 ## 既知の制約・次スプリントでの改善点
 
