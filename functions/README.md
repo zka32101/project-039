@@ -153,6 +153,11 @@ firebase deploy --only functions,firestore:rules,firestore:indexes  # 本番デ�
   （即時反映が必要になった場合はRemote Config管理APIのWebhook等への切り替えを検討）
 - 集計ロジック（`src/aggregation.js`）は、投稿件数（`shadeSampleCount`/`brightnessSampleCount`）に
   応じて新規投稿1件あたりの重みを逓減させる加重移動平均（直近20件相当で頭打ち）に更新済み。
-  設計書が意図する「投稿者の信頼スコアでの重みづけ」はまだ未実装
+  設計書が意図する「投稿者の信頼スコアでの重みづけ」も実装済み: `users/{submitterId}.isVerified`
+  に応じて1件あたりの重み倍率を変える（本人確認済み=1.5倍、匿名=0.7倍、`computeTrustWeight`
+  参照）。承認可否（自動承認/人力承認キュー）自体は変えず、承認された後の「スコアへの
+  影響度」だけを調整する設計にしている（匿名投稿も0倍にはせず歓迎し続けることで、
+  `ModerationConfig.autoApproveAnonymous`が意図する「ソフトローンチ初期は投稿密度優先」
+  という方針を損なわないため）
 - NGワードフィルタ（`src/moderationLogic.js`）は検証用の最小限の辞書のみ。
   実運用では専用のモデレーションAPIへの置き換えを推奨

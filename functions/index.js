@@ -30,7 +30,7 @@ import {
   SEARCH_ROUTE_RATE_LIMIT_WINDOW_MS,
   SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS,
 } from './src/rateLimiting.js';
-import { applyApprovedSpotToRoadSegment } from './src/aggregation.js';
+import { applyApprovedSpotToRoadSegment, computeTrustWeight } from './src/aggregation.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
@@ -204,7 +204,18 @@ export const syncModerationConfigFromRemoteConfig = onSchedule('every 1 hours', 
 // 有無のような客観的な観測と異なり、投稿者の主観や偏見の影響を受けやすい（特定エリア・
 // 属性への偏った印象の助長・荒らしのリスク）ため、地域のモデレーション設定に関わらず
 // 常に人力承認を必須とする（`decideInitialStatus`の`requiresManualReview`参照）。
+//
+// 投稿者の信頼スコアでの重みづけ: 集計（`applyApprovedSpotToRoadSegment`）への反映度合いを
+// `users/{submitterId}.isVerified`に応じて変える（`aggregation.js`の`computeTrustWeight`参照）。
+// 承認可否そのもの（自動承認 or 人力承認キュー）は変えず、承認された後の「1件あたりの
+// スコアへの影響度」だけを調整する（未確認ユーザーの投稿も歓迎して密度を稼ぐ、という
+// ソフトローンチ方針＝ModerationConfig.autoApproveAnonymousの意図と両立させるため）。
 // ------------------------------------------------------------------
+async function loadTrustWeight(submitterId) {
+  const doc = await db.collection('users').doc(submitterId).get();
+  return computeTrustWeight(doc.exists ? doc.data() : null);
+}
+
 async function handleSpotCreated(snapshot, spotKind) {
   const data = snapshot.data();
   const moderationConfig = await loadModerationConfig(db);
@@ -220,10 +231,12 @@ async function handleSpotCreated(snapshot, spotKind) {
 
   if (status === 'approved') {
     await snapshot.ref.update({ status: 'approved' });
+    const trustWeight = await loadTrustWeight(data.submitterId);
     await applyApprovedSpotToRoadSegment(
       db,
       data.roadSegmentId,
       spotKind === 'brightness' ? { brightness: 0 } : { shade: 1 },
+      trustWeight,
     );
   }
   // status === 'pending' の場合はクライアントが設定した値のまま（人力承認キューで後日処理）
@@ -244,10 +257,12 @@ async function handleSpotApproved(change, spotKind) {
   const after = change.after.data();
   if (before.status === after.status || after.status !== 'approved') return;
 
+  const trustWeight = await loadTrustWeight(after.submitterId);
   await applyApprovedSpotToRoadSegment(
     db,
     after.roadSegmentId,
     spotKind === 'brightness' ? { brightness: 0 } : { shade: 1 },
+    trustWeight,
   );
 }
 

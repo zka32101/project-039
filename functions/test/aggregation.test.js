@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeMovingAverage, computeWeightedAverage } from '../src/aggregation.js';
+import { computeMovingAverage, computeWeightedAverage, computeTrustWeight } from '../src/aggregation.js';
 
 test('computeMovingAverage: 後方互換（sampleCount=1相当の単純平均）を返す', () => {
   assert.equal(computeMovingAverage(0.4, 1), 0.7);
@@ -36,4 +36,34 @@ test('computeWeightedAverage: sampleCountはMAX_EFFECTIVE_SAMPLES(20)で頭打�
 test('computeWeightedAverage: 結果は0〜1にクランプされる', () => {
   assert.equal(computeWeightedAverage(0, 0, 5), 0);
   assert.equal(computeWeightedAverage(1, 1, 5), 1);
+});
+
+test('computeWeightedAverage: trustWeightを省略すると従来通り(=1)の重みになる', () => {
+  assert.equal(computeWeightedAverage(0.5, 1, 9), computeWeightedAverage(0.5, 1, 9, 1));
+});
+
+test('computeWeightedAverage: trustWeightが大きいほど新規値の影響が大きくなる', () => {
+  const lowTrust = computeWeightedAverage(0.5, 1, 9, 0.7); // 未確認ユーザー相当
+  const baseline = computeWeightedAverage(0.5, 1, 9, 1);
+  const highTrust = computeWeightedAverage(0.5, 1, 9, 1.5); // 本人確認済み相当
+  assert.ok(lowTrust < baseline);
+  assert.ok(baseline < highTrust);
+});
+
+test('computeWeightedAverage: trustWeightが大きくても結果は0〜1にクランプされる', () => {
+  assert.equal(computeWeightedAverage(0.9, 1, 0, 10), 1);
+  assert.equal(computeWeightedAverage(0.1, 0, 0, 10), 0);
+});
+
+test('computeTrustWeight: 本人確認済みユーザーは匿名ユーザーより重みが大きい', () => {
+  const verified = computeTrustWeight({ isVerified: true });
+  const anonymous = computeTrustWeight({ isVerified: false });
+  const noProfile = computeTrustWeight(null); // usersドキュメントが無い＝未確認の匿名ユーザー
+  assert.ok(verified > anonymous);
+  assert.equal(anonymous, noProfile);
+});
+
+test('computeTrustWeight: 匿名ユーザーの重みは0より大きい（投稿密度を稼ぐ効果を残すため）', () => {
+  assert.ok(computeTrustWeight(null) > 0);
+  assert.ok(computeTrustWeight({ isVerified: false }) > 0);
 });
