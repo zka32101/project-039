@@ -27,6 +27,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち、連投レート制限含む）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
 | `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ＋連投レート制限 |
+| `voteSpot` | Callable (`onCall`) | 投稿の相互チェック（確認投票／通報、認証必須・レート制限あり） |
 | `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`とAuth Custom Claim（`isVerified`）を更新 |
 | `onAnnouncementCreated` | Firestore `onDocumentCreated` | お知らせ（設計書Step7）作成をトリガーに`announcements`トピック購読者へFCM配信 |
 | `syncModerationConfigFromRemoteConfig` | Schedule（1時間毎） | Remote Configテンプレートの`moderation_*`パラメータを`config/moderation`へ自動反映 |
@@ -68,6 +69,30 @@ Custom Claimはトークン発行時点のスナップショットのため、�
 突破すれば無制限に連投できてしまう点は変わらないため、投稿・`searchRoute`と同様の対策を
 コメントにも拡張した。
 
+**投稿の相互チェック（確認投票／通報、`voteSpot`）**: `shadeSpots`/`brightnessSpots`の
+`votes`フィールドはこれまで作成時に`0`で初期化されるのみで、増減させるロジックが存在しない
+未使用フィールドだった。以下2つの意味を持つ投票として実装した（詳細な設計意図は
+`src/spotVoting.js`のコメント参照）:
+- confirm（確認投票）: 「この投稿は正しい」という他ユーザーからの追認。`votes`が
+  `CONFIRM_APPROVE_THRESHOLD`（既定3）件集まると、人力承認待ち（'pending'）の投稿を
+  自動承認へ引き上げる
+- report（通報）: 「この投稿は不正確・不適切」という指摘。`reportCount`が
+  `REPORT_HOLD_THRESHOLD`（既定3）件集まると、承認済み（'approved'）の投稿を人力再審査待ち
+  （'pending'）へ差し戻す。削除ではなく可逆的な保留にとどめる（他のレート制限と同じ方針）
+
+不正利用対策として、(1) 投稿者本人による自演投票を禁止（`submitterId`との一致チェック）、
+(2) 同一ユーザーは同一投稿に対して1回のみ投票可能（`spotVotes/{spotKind}_{spotId}_{uid}`の
+存在チェックをFirestoreトランザクションで原子的に判定）、(3) `checkAndIncrementRateLimit`に
+よる短時間の大量投票の抑止（`VOTE_RATE_LIMIT_WINDOW_MS`/`VOTE_RATE_LIMIT_MAX_REQUESTS`）を
+実装している。
+
+【既知の制約】通報によって'approved'→'pending'へ差し戻しても、`aggregation.js`が既に
+道路区間の集計スコアへ反映済みの影響度は自動的には巻き戻さない（過去の集計への遡及的な
+取り消しは行わない設計。今後の反映を止めることが目的で、遡及訂正は将来課題）。また、
+投票ボタンを表示するクライアント側UI（個々の投稿を一覧・詳細表示する画面）は現時点では
+未実装（`app/README.md`参照）。バックエンドとクライアント側の呼び出し口
+（`SpotVoteService`）は用意済みのため、当該UIの実装時にすぐ接続できる。
+
 **主観的な投稿種別への荒らし対策（人通りが少ない）**: 「人通りが少ない」（`brightnessSpots`の
 `reasonType: 'low_foot_traffic'`）は、日陰・雨よけの有無のような客観的な観測と異なり、
 投稿者の主観・偏見の影響を受けやすい（特定エリア・属性への偏った印象の助長・荒らしのリスク）。
@@ -99,11 +124,16 @@ roadSegments/{id}    = { roadId, fromNodeId, toNodeId, distanceM,
   // idはbuildGraph()が生成するedge id（`${wayId}_${i}`）と一致。
   // shadeSpots/brightnessSpotsの roadSegmentId がこのドキュメントIDを指す
 buildings/{id}       = { heightM, centerLat, centerLon }
-shadeSpots/{id}      = { roadSegmentId, type, timeDependent, submitterId, status, createdAt, votes }
-brightnessSpots/{id} = { roadSegmentId, brightnessLevel, reasonType, submitterId, status, createdAt }
+shadeSpots/{id}      = { roadSegmentId, type, timeDependent, submitterId, status, createdAt,
+                          votes, reportCount }
+brightnessSpots/{id} = { roadSegmentId, brightnessLevel, reasonType, submitterId, status, createdAt,
+                          votes, reportCount }
   // reasonType: 'dark'（夜の明るさ投稿） | 'low_foot_traffic'（人通りが少ない投稿）
   // 'low_foot_traffic'は常に人力承認へ回す（上記「投稿の不正利用対策」参照）
+  // votes/reportCountはvoteSpotが更新する（下記「投稿の相互チェック」参照）
 spotComments/{id}    = { spotId, submitterId, text, moderationStatus, createdAt }
+spotVotes/{voteId}   = { spotKind, spotId, uid, voteType, createdAt }
+  // voteId = `${spotKind}_${spotId}_${uid}`。同一ユーザーの同一投稿への二重投票を防ぐための記録専用
 config/moderation    = { region, autoApproveAnonymous, trustScoreThreshold }
 users/{uid}          = { isVerified, verificationMethod, phoneNumber, updatedAt }
   // isVerified等はsyncVerificationStatusのみが書き込む（クライアントは読み取りのみ）
