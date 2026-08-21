@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
+import '../models/road_segment.dart';
 import 'road_graph_engine/graph.dart';
 import 'road_graph_engine/shadow_score.dart';
 

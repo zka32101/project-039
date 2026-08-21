@@ -99,11 +99,27 @@
     タップ操作という新規UIインタラクションを追加しなくても「特定投稿へのコメント紐付け表示」
     を実現できると判断し、当初の想定より前倒しで対応（`SpotCommentService.fetchForSpot`、
     詳細は `app/README.md` 参照）
+18. **このセッションで初めてFlutter SDKへのネットワークアクセスが確保できたため、`app/`の
+    `flutter pub get && flutter analyze && flutter test`を実際に実行した**（従来はブレース・
+    括弧の対応数のみのチェックに留まっていた範囲）。検出された実際のバグをすべて修正:
+    - PR #31で導入した`spot_summary.dart`/`spot_list_service.dart`の相対importパスの誤り
+      （コンパイルエラー）
+    - それ以前から存在していた`map_projection.dart`/`road_network_repository.dart`の
+      `RoadNode`未import、`location_service.dart`の`geolocator`パッケージAPI不一致
+      （`getCurrentPosition`の引数名）、`home_view_model.dart`の`LocationPermissionState`
+      未import（いずれもコンパイルエラー）
+    - `destination_picker_view.dart`のレイアウトオーバーフロー（`AspectRatio`の地図が画面より
+      縦長になりうる構成だった）を`SingleChildScrollView`化して解消
+    - `withOpacity`非推奨API・不要import等のlintも解消し、`flutter analyze`は実質クリーンに
+    - テスト側の問題（`rootBundle`のFutureキャッシュが同一ファイル内の複数`testWidgets`間で
+      競合し、2件目が`pumpAndSettle`タイムアウトする不具合）も特定・修正
+    - 最終的に`flutter test`は48件全てpassし、`pubspec.lock`をリポジトリにコミット（アプリの
+      ビルド再現性のため）。`.gitignore`の`app/.flutter-plugin-dependencies`という誤字
+      （実際のファイル名は`-plugins-`と複数形）も修正
+    - 詳細は `app/README.md` 参照
 
 ## 次のアクション
 
-- ローカル環境で `app/` の `flutter pub get && flutter analyze && flutter test` を実行し、
-  型エラー・ビルドエラーが無いことを確認
 - ローカル環境でFirebaseプロジェクトを作成し、`app/README.md` の手順に沿って実接続を確認
   （`google-services.json`配置、Auth の電話番号認証プロバイダ有効化、Cloud Messaging有効化＋
   iOSはAPNs認証キー登録、`firestore.rules`デプロイ・検証、Remote Configキー設定）
@@ -112,3 +128,9 @@
 - ローカル環境でRevenueCatプロジェクトを作成し、`app/README.md` の手順に沿って実接続を確認
   （APIキーの`--dart-define`注入、`premium`エンタイトルメント設定）
 - `prototype/` の技術検証を、ネットワーク制限のない環境でOverpass API実疎通ありで再実施
+- **APKビルド**: このセッションのネットワークポリシーは`dl.google.com`（Android SDK
+  cmdline-toolsの配布元）への接続を拒否するため、Android SDKを導入できずAPKビルドは
+  未実施（Flutter SDK自体は`storage.googleapis.com`経由で導入でき、上記の`flutter analyze`/
+  `flutter test`はこのセッションで実施済み）。ローカル環境またはこのポリシー制約の無い
+  環境で`flutter create .`（`android/`/`ios/`ディレクトリ生成）→Android SDKセットアップ→
+  `flutter build apk`を実行する必要がある

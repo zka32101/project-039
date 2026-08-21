@@ -1,5 +1,5 @@
 import 'dart:ui';
-import 'road_graph_engine/graph.dart';
+import '../models/road_segment.dart';
 
 /// 緯度経度⇔画面座標(Offset)の相互変換。ホームの経路表示・投稿キャンバスの双方で
 /// 「道路網の全ノードを収める矩形」を基準にした同一の投影ロジックを使う。

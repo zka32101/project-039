@@ -1,4 +1,4 @@
-import 'spot_vote_service.dart' show SpotVoteKind;
+import '../services/spot_vote_service.dart' show SpotVoteKind;
 
 /// 投稿一覧画面（`SpotsListView`）で表示する、承認済み投稿（`shadeSpots`/`brightnessSpots`）の
 /// 要約。確認投票／通報（`voteSpot`）の対象を選ぶための最小限の情報のみを持つ

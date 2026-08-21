@@ -270,7 +270,7 @@ class _ReadyView extends ConsumerWidget {
           ),
           if (route.isFromCache) ...[
             const SizedBox(height: 8),
-            _OfflineCacheBanner(),
+            const _OfflineCacheBanner(),
           ],
           const SizedBox(height: 12),
           Row(

@@ -113,7 +113,7 @@ class _PaintCanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final roadPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.35)
+      ..color = Colors.grey.withValues(alpha: 0.35)
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
 
@@ -135,7 +135,7 @@ class _PaintCanvasPainter extends CustomPainter {
 
     if (trace.length > 1) {
       final tracePaint = Paint()
-        ..color = traceColor.withOpacity(0.85)
+        ..color = traceColor.withValues(alpha: 0.85)
         ..strokeWidth = 7
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
