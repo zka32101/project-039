@@ -88,9 +88,12 @@
 15. 投稿の相互チェック（確認投票／通報）を実装。従来`votes`フィールドは初期化されるのみで
     増減させるロジックが無い未使用フィールドだった。確認投票が集まれば人力承認待ちの投稿を
     自動承認へ引き上げ、通報が集まれば承認済みの投稿を人力再審査待ちへ差し戻す
-    `voteSpot`（Cloud Functions）を実装（自演投票・二重投票・連投は不正利用対策で禁止）。
-    投票ボタンを表示するUIは未実装（バックエンドとクライアント側の呼び出し口のみ用意）
+    `voteSpot`（Cloud Functions）を実装（自演投票・二重投票・連投は不正利用対策で禁止）
     （`functions/index.js`・`functions/src/spotVoting.js`、詳細は `functions/README.md` 参照）
+16. 投稿一覧画面「投稿を確認」を追加。承認済み投稿（`shadeSpots`/`brightnessSpots`横断）を
+    一覧表示し、各投稿に確認投票／通報ボタンを配置。「みんなの声」画面と同じ構成を踏襲しつつ、
+    投票結果を即座に画面へ反映する（`app/lib/views/spots/spots_list_view.dart`、
+    詳細は `app/README.md` 参照）
 
 ## 次のアクション
 

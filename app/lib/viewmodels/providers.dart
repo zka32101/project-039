@@ -12,6 +12,7 @@ import '../firebase/firebase_push_notification_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
 import '../firebase/firebase_spot_comment_service.dart';
+import '../firebase/firebase_spot_list_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
 import '../firebase/firebase_spot_vote_service.dart';
 import '../firebase/firebase_verification_service.dart';
@@ -27,6 +28,7 @@ import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_comment_service.dart';
+import '../services/spot_list_service.dart';
 import '../services/spot_submission_service.dart';
 import '../services/spot_vote_service.dart';
 import '../services/subscription_service.dart';
@@ -120,11 +122,14 @@ final spotCommentServiceProvider = Provider<SpotCommentService>((ref) {
       : LocalSpotCommentService();
 });
 
-// 【現状】バックエンド（functions/index.jsのvoteSpot）は実装済みだが、投票ボタンを表示する
-// クライアント側UIはこのセッションの範囲では未実装（app/README.md参照）。将来のUI実装時に
-// すぐ利用できるよう、呼び出し口だけを先行して用意している。
 final spotVoteServiceProvider = Provider<SpotVoteService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirestoreSpotVoteService(FirebaseFunctions.instance)
       : LocalSpotVoteService();
+});
+
+final spotListServiceProvider = Provider<SpotListService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreSpotListService(FirebaseFirestore.instance)
+      : LocalSpotListService();
 });
