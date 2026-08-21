@@ -29,6 +29,8 @@ import {
   checkAndIncrementRateLimit,
   SEARCH_ROUTE_RATE_LIMIT_WINDOW_MS,
   SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS,
+  COMMENT_RATE_LIMIT_WINDOW_MS,
+  COMMENT_RATE_LIMIT_MAX_REQUESTS,
 } from './src/rateLimiting.js';
 import { applyApprovedSpotToRoadSegment, computeTrustWeight } from './src/aggregation.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
@@ -274,12 +276,27 @@ export const onBrightnessSpotApproved = onDocumentUpdated('brightnessSpots/{spot
   await handleSpotApproved(event.data, 'brightness');
 });
 
-// コメントのモデレーション（NGワードフィルタのみ。本人確認要件はfirestore.rulesの
+// コメントのモデレーション（NGワードフィルタ＋連投レート制限。本人確認要件はfirestore.rulesの
 // isVerifiedUser()チェックで担保する）
+//
+// コメント連投のレート制限: NGワードフィルタは個々のコメント内容のみを見ており、大量連投そのもの
+// までは防げない。直近COMMENT_RATE_LIMIT_WINDOW_MS以内にCOMMENT_RATE_LIMIT_MAX_REQUESTSを超えて
+// コメントした場合、NGワード判定の結果に関わらず'pending'（人力確認待ち）に留め置く
+// （拒否ではなく保留にとどめ、誤検知時にも復旧可能にする。投稿側のレート制限と同じ方針）。
 export const onSpotCommentCreated = onDocumentCreated('spotComments/{commentId}', async (event) => {
   const data = event.data.data();
   const moderationConfig = await loadModerationConfig(db);
-  const status = decideCommentModerationStatus(data.text, moderationConfig.ngWords);
+  let status = decideCommentModerationStatus(data.text, moderationConfig.ngWords);
+
+  if (status === 'approved') {
+    const allowed = await checkAndIncrementRateLimit(db, `comment:${data.submitterId}`, {
+      windowMs: COMMENT_RATE_LIMIT_WINDOW_MS,
+      maxRequests: COMMENT_RATE_LIMIT_MAX_REQUESTS,
+      now: new Date(),
+    });
+    if (!allowed) status = 'pending';
+  }
+
   await event.data.ref.update({ moderationStatus: status });
 });
 

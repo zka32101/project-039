@@ -4,6 +4,8 @@ import {
   exceedsRateLimit,
   RATE_LIMIT_MAX_SUBMISSIONS,
   decideRateLimitTransition,
+  COMMENT_RATE_LIMIT_WINDOW_MS,
+  COMMENT_RATE_LIMIT_MAX_REQUESTS,
 } from '../src/rateLimiting.js';
 
 test('exceedsRateLimit: 上限件数以下なら超過しない', () => {
@@ -48,4 +50,20 @@ test('decideRateLimitTransition: ウィンドウ境界ちょうど（差分==win
   const existing = { windowStartMs: 0, count: 30 };
   const result = decideRateLimitTransition(existing, 60_000, 60_000, 30);
   assert.equal(result.allow, true);
+});
+
+test('コメントのレート制限定数: 投稿より軽量な操作として緩めの上限が設定されている', () => {
+  assert.equal(COMMENT_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
+  assert.ok(COMMENT_RATE_LIMIT_MAX_REQUESTS > RATE_LIMIT_MAX_SUBMISSIONS);
+});
+
+test('decideRateLimitTransition: コメントのレート制限設定でも同じ判定ロジックが機能する（上限到達で拒否）', () => {
+  const existing = { windowStartMs: 1000, count: COMMENT_RATE_LIMIT_MAX_REQUESTS };
+  const result = decideRateLimitTransition(
+    existing,
+    1000 + 60_000,
+    COMMENT_RATE_LIMIT_WINDOW_MS,
+    COMMENT_RATE_LIMIT_MAX_REQUESTS,
+  );
+  assert.equal(result.allow, false);
 });

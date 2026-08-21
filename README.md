@@ -76,6 +76,11 @@
     NGワード辞書（`moderation_ng_words`）も統合。あわせて、区切り文字を挟んだ簡易的な
     フィルタ回避（例:「死　ね」）を正規化で吸収するようにした
     （`functions/src/moderationLogic.js`、詳細は `functions/README.md` 参照）
+13. コメント（`spotComments`）の不正利用対策として連投レート制限を追加。投稿・`searchRoute`には
+    既にレート制限があったがコメントには無く、本人確認（電話番号SMS認証）突破後は無制限に
+    連投できてしまう抜け穴だった。NGワードフィルタでapproved判定されたコメントでも、直近10分間に
+    一定件数を超えていれば'pending'（人力確認待ち）に差し替える
+    （`functions/src/rateLimiting.js`、詳細は `functions/README.md` 参照）
 
 ## 次のアクション
 
