@@ -33,6 +33,11 @@ import {
   COMMENT_RATE_LIMIT_MAX_REQUESTS,
 } from './src/rateLimiting.js';
 import { applyApprovedSpotToRoadSegment, computeTrustWeight } from './src/aggregation.js';
+import {
+  decideVoteEffect,
+  VOTE_RATE_LIMIT_WINDOW_MS,
+  VOTE_RATE_LIMIT_MAX_REQUESTS,
+} from './src/spotVoting.js';
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
@@ -298,6 +303,72 @@ export const onSpotCommentCreated = onDocumentCreated('spotComments/{commentId}'
   }
 
   await event.data.ref.update({ moderationStatus: status });
+});
+
+// ------------------------------------------------------------------
+// voteSpot: 投稿の相互チェック（確認投票／通報）
+// これまで`shadeSpots`/`brightnessSpots`の`votes`フィールドは初期値0で作成されるのみで、
+// 増減させるロジックが存在しない未使用フィールドだった。以下の2つの意味を持つ投票として
+// 実装する（詳細な設計意図は`src/spotVoting.js`のコメント参照）:
+//   confirm: 「この投稿は正しい」。`CONFIRM_APPROVE_THRESHOLD`件集まると、人力承認待ちの
+//            投稿を自動承認へ引き上げる
+//   report:  「この投稿は不正確・不適切」。`REPORT_HOLD_THRESHOLD`件集まると、承認済みの
+//            投稿を人力再審査待ちへ差し戻す（削除ではなく可逆的な保留にとどめる）
+//
+// 不正利用対策: (1) 投稿者本人による自演投票を禁止（submitterIdとの一致チェック）、
+// (2) 同一ユーザーは同一投稿に対して1回のみ投票可能（`spotVotes/{spotKind}_{spotId}_{uid}`の
+// 存在チェック、Firestoreトランザクションで原子的に判定）、(3) 短時間の大量投票を防ぐ
+// レート制限（`checkAndIncrementRateLimit`、`searchRoute`/コメントと同じ仕組み）。
+// ------------------------------------------------------------------
+export const voteSpot = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const { spotKind, spotId, voteType } = request.data ?? {};
+  if (spotKind !== 'shade' && spotKind !== 'brightness') {
+    throw new HttpsError('invalid-argument', 'spotKindはshadeまたはbrightnessである必要があります');
+  }
+  if (voteType !== 'confirm' && voteType !== 'report') {
+    throw new HttpsError('invalid-argument', 'voteTypeはconfirmまたはreportである必要があります');
+  }
+  if (typeof spotId !== 'string' || spotId.length === 0) {
+    throw new HttpsError('invalid-argument', 'spotIdが不正です');
+  }
+
+  const allowed = await checkAndIncrementRateLimit(db, `vote:${request.auth.uid}`, {
+    windowMs: VOTE_RATE_LIMIT_WINDOW_MS,
+    maxRequests: VOTE_RATE_LIMIT_MAX_REQUESTS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    throw new HttpsError('resource-exhausted', '短時間の投票が集中しています。しばらく待ってから再度お試しください');
+  }
+
+  const spotRef = db.collection(spotKind === 'shade' ? 'shadeSpots' : 'brightnessSpots').doc(spotId);
+  const voteRef = db.collection('spotVotes').doc(`${spotKind}_${spotId}_${request.auth.uid}`);
+
+  await db.runTransaction(async (tx) => {
+    const [spotSnapshot, voteSnapshot] = await Promise.all([tx.get(spotRef), tx.get(voteRef)]);
+    if (!spotSnapshot.exists) {
+      throw new HttpsError('not-found', '投稿が見つかりません');
+    }
+    const spotData = spotSnapshot.data();
+    if (spotData.submitterId === request.auth.uid) {
+      throw new HttpsError('failed-precondition', '自分の投稿には投票できません');
+    }
+    if (voteSnapshot.exists) {
+      throw new HttpsError('already-exists', 'この投稿にはすでに投票済みです');
+    }
+
+    const effect = decideVoteEffect(
+      { votes: spotData.votes ?? 0, reportCount: spotData.reportCount ?? 0, status: spotData.status },
+      voteType,
+    );
+    tx.update(spotRef, { votes: effect.votes, reportCount: effect.reportCount, status: effect.status });
+    tx.set(voteRef, { spotKind, spotId, uid: request.auth.uid, voteType, createdAt: new Date() });
+  });
+
+  return { success: true };
 });
 
 // ------------------------------------------------------------------
