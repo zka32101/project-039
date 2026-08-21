@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
 import '../../widgets/primary_button.dart';
 import '../announcements/announcements_list_view.dart';
+import '../comments/spot_comments_list_view.dart';
 import '../destination/destination_picker_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
@@ -25,6 +26,13 @@ class HomeView extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('あんしんみち'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.forum_outlined),
+            tooltip: 'みんなの声',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SpotCommentsListView()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.campaign_outlined),
             tooltip: 'お知らせ',

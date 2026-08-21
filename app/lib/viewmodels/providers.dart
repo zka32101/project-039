@@ -11,6 +11,7 @@ import '../firebase/firebase_auth_service.dart';
 import '../firebase/firebase_push_notification_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
+import '../firebase/firebase_spot_comment_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
 import '../firebase/firebase_verification_service.dart';
 import '../purchases/revenuecat_subscription_service.dart';
@@ -24,6 +25,7 @@ import '../services/push_notification_service.dart';
 import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
+import '../services/spot_comment_service.dart';
 import '../services/spot_submission_service.dart';
 import '../services/subscription_service.dart';
 import '../services/verification_service.dart';
@@ -108,4 +110,10 @@ final announcementServiceProvider = Provider<AnnouncementService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirestoreAnnouncementService(FirebaseFirestore.instance)
       : LocalAnnouncementService();
+});
+
+final spotCommentServiceProvider = Provider<SpotCommentService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreSpotCommentService(FirebaseFirestore.instance)
+      : LocalSpotCommentService();
 });
