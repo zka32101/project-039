@@ -53,48 +53,53 @@ class _DestinationPickerViewState extends ConsumerState<DestinationPickerView> {
           padding: const EdgeInsets.all(20),
           child: graph == null
               ? const Center(child: CircularProgressIndicator())
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('地図をタップして目的地を選んでください', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    const Text('選んだ地点に最も近い道へ自動的に接続されます'),
-                    const SizedBox(height: 16),
-                    AspectRatio(
-                      aspectRatio: 1,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final size = Size(constraints.maxWidth, constraints.maxHeight);
-                          _projection = MapProjection.fromNodes(graph.nodeById.values, size);
-                          return DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: GestureDetector(
-                                onTapUp: (details) => setState(() => _selectedPoint = details.localPosition),
-                                child: CustomPaint(
-                                  painter: _DestinationPickerPainter(
-                                    graph: graph,
-                                    projection: _projection!,
-                                    selectedPoint: _selectedPoint,
+              : SingleChildScrollView(
+                  // 画面が縦に狭い場合（例: 横向き表示）でもAspectRatio(1)の地図がはみ出さないよう、
+                  // Columnをスクロール可能にしている（横幅に対して正方形になるよう描画するため、
+                  // 縦に余裕が無いとオーバーフローしてしまう）。
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('地図をタップして目的地を選んでください', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      const Text('選んだ地点に最も近い道へ自動的に接続されます'),
+                      const SizedBox(height: 16),
+                      AspectRatio(
+                        aspectRatio: 1,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final size = Size(constraints.maxWidth, constraints.maxHeight);
+                            _projection = MapProjection.fromNodes(graph.nodeById.values, size);
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: GestureDetector(
+                                  onTapUp: (details) => setState(() => _selectedPoint = details.localPosition),
+                                  child: CustomPaint(
+                                    painter: _DestinationPickerPainter(
+                                      graph: graph,
+                                      projection: _projection!,
+                                      selectedPoint: _selectedPoint,
+                                    ),
+                                    child: const SizedBox.expand(),
                                   ),
-                                  child: const SizedBox.expand(),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    PrimaryButton(
-                      label: 'この場所を目的地にする',
-                      onPressed: () async => _confirm(),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      PrimaryButton(
+                        label: 'この場所を目的地にする',
+                        onPressed: () async => _confirm(),
+                      ),
+                    ],
+                  ),
                 ),
         ),
       ),
@@ -112,7 +117,7 @@ class _DestinationPickerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final roadPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.5)
+      ..color = Colors.grey.withValues(alpha: 0.5)
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
 

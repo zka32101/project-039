@@ -6,7 +6,7 @@ import 'package:anshinmichi/services/route_result_cache.dart';
 RouteResult _sampleRoute() {
   const from = RoadNode(id: 'A', lat: 35.681, lon: 139.767);
   const to = RoadNode(id: 'B', lat: 35.682, lon: 139.768);
-  final segment = RoadSegment(
+  const segment = RoadSegment(
     id: 'seg1',
     from: from,
     to: to,
@@ -15,7 +15,7 @@ RouteResult _sampleRoute() {
     aggregatedShadeScore: 0.6,
     aggregatedBrightnessScore: 0.4,
   );
-  return RouteResult(
+  return const RouteResult(
     nodes: [from, to],
     segments: [segment],
     distanceM: 120,

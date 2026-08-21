@@ -1,11 +1,12 @@
 # Flutter/Dart
 app/.dart_tool/
-app/.flutter-plugin-dependencies
+app/.flutter-plugins-dependencies
 app/build/
 app/android/
 app/ios/
 app/.packages
-app/pubspec.lock
+# pubspec.lockはアプリ（パッケージではない）のため、ビルド再現性のためコミットする
+# （Flutter公式ガイドライン: アプリはlockファイルをコミットすべき、パッケージはすべきでない）
 
 # Firebase: プロジェクト固有の値を含むため各自の `flutterfire configure` で生成する
 app/lib/firebase/firebase_options.dart

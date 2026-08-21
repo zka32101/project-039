@@ -5,12 +5,15 @@
 
 ## セットアップ上の重要な注記
 
-このセッションの実行環境には **Flutter/Dart SDKがインストールされておらず**、
-`flutter pub get` / `flutter analyze` / `flutter test` / `flutter create` を実行できていない。
-そのため:
+【更新】このセッションで初めてFlutter SDKへのネットワークアクセスが確保できたため、
+`flutter pub get` / `flutter analyze` / `flutter test` を実際に実行し、検出された実際のバグ
+（PR #31の相対importパス誤り、`geolocator`パッケージAPI不一致、未import等の複数のコンパイル
+エラー、`destination_picker_view.dart`のレイアウトオーバーフロー、テストの`rootBundle`
+キャッシュ競合）をすべて修正済み（`flutter analyze`は実質クリーン、`flutter test`は48件全て
+pass）。ただし**Android SDK（`dl.google.com`）へのアクセスはこのセッションのネットワーク
+ポリシーで拒否されており、`flutter create .`によるプラットフォームディレクトリ生成・
+APKビルドは依然として未実施**。そのため:
 
-- `lib/` 配下のコードはレビューベースで作成しており、**実機・エミュレータでのビルド確認は未実施**。
-  ローカル環境で `flutter pub get && flutter analyze` を最初に実行し、型エラー等を確認すること。
 - `android/` `ios/` 等のプラットフォームディレクトリは含まれていない（`flutter create .` で生成される
   ため）。**ローカルで `flutter create .` を実行してプラットフォームコードを生成した上で**、
   位置情報権限の設定を追加すること:
@@ -244,6 +247,35 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     「特定投稿へのコメント紐付け表示」を実現できると判断し、当初の想定より前倒しで対応した。
     `spotId`＋`moderationStatus`＋`createdAt`の複合クエリのため`firestore.indexes.json`に
     インデックスを追加）
+- [x] **Flutter SDKによる実検証・バグ修正**: このセッションで初めてFlutter SDKへの
+  ネットワークアクセスが確保できたため、`flutter pub get && flutter analyze && flutter test`
+  を実際に実行した。検出した実際のバグをすべて修正:
+  - PR #31（投稿一覧画面）で導入した`spot_summary.dart`/`spot_list_service.dart`の相対
+    importパス誤り（`models/`と`services/`を取り違えていた、コンパイルエラー）
+  - それ以前から存在していた、`flutter analyze`が無ければ気付けなかったコンパイルエラー3件:
+    `map_projection.dart`/`road_network_repository.dart`が`RoadNode`をimportせず
+    `road_graph_engine/graph.dart`経由で参照できると誤認していた、`location_service.dart`が
+    `geolocator: ^12.0.0`の実際のAPI（`getCurrentPosition`は`locationSettings`ではなく
+    `desiredAccuracy`引数）と異なる呼び出しをしていた、`home_view_model.dart`が
+    `LocationPermissionState`を未importのまま使用していた
+  - `destination_picker_view.dart`のレイアウトオーバーフロー（`AspectRatio(1)`の地図が、
+    画面の縦幅より横幅が大きい状況で画面をはみ出す構成だった）を`SingleChildScrollView`化して
+    解消
+  - `withOpacity`非推奨API・不要import・`const`不足等のlintも解消
+  - テスト側の問題も特定・修正: `destination_picker_view_test.dart`の2件目のテストが
+    `pumpAndSettle`タイムアウトで失敗する不具合は、Flutterの`rootBundle`（グローバル
+    シングルトン）が`loadString`の結果をFutureごとキャッシュする仕様と、そのFutureが
+    1件目のテストのfakeAsyncゾーンに紐づいているためゾーン終了後は完了コールバックが
+    配送されないという既知の相互作用が原因だった（`rootBundle.evict()`で各テスト前に
+    キャッシュを破棄することで解消。`tester.ensureVisible()`によるスクロール不足も併せて修正）
+  - 最終結果: `flutter analyze`は実質クリーン（既知のfalse-positiveな info 1件のみ）、
+    `flutter test`は48件全てpass
+  - `pubspec.lock`をリポジトリにコミット（Flutter公式ガイドライン: アプリはビルド再現性の
+    ためlockファイルをコミットすべき）。ルート`.gitignore`の`app/.flutter-plugin-dependencies`
+    という誤字（実際のファイル名は`-plugins-`と複数形）も修正
+  - 【重要な制約】Android SDK（`dl.google.com`）へのアクセスはこのセッションのネットワーク
+    ポリシーで拒否されており、`flutter create .`によるプラットフォームディレクトリ生成・
+    APKビルドは依然として未実施（下記「実装していない範囲」参照）
 
 ## このセッションで実装していない範囲（次スプリント）
 
@@ -255,6 +287,12 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - 実地図タイルのネイティブ設定（`android/`/`ios/`ディレクトリの生成・APIキー登録）— Dart側の
   実装（`RealMapRouteView`）は完了。ローカルで`flutter create .`後にAPIキーを設定するまでは
   既定の`SchematicMapView`が使われる（上記参照）
+- **APKビルド（`flutter create .`によるプラットフォームディレクトリ生成含む）** —
+  Android SDK（cmdline-tools）の配布元`dl.google.com`が、このセッションのネットワーク
+  ポリシーで明示的に拒否（403）されているため導入できない（Flutter SDK自体は
+  `storage.googleapis.com`経由で導入でき、`flutter analyze`/`flutter test`はこのセッションで
+  実施済み・全件pass）。ローカル環境か、当該ポリシー制約の無い環境で
+  `flutter create . && flutter build apk`を実行する必要がある
 - コメント（`spotComments`）の道路区間・地図上の位置への紐付け表示（地図をタップした場所の
   コメントを見る等）— 「投稿を確認」画面の各行タップで特定投稿へのコメント紐付け表示は
   実装済みになったが、地図側のタップ操作という新規UIインタラクションはこのセッションでは
@@ -362,3 +400,8 @@ flutter run
 # 済ませたうえで:
 flutter run --dart-define=USE_GOOGLE_MAPS=true
 ```
+
+上記のうち `flutter pub get` / `flutter analyze` / `flutter test`（`flutter create .`を除く）は
+このセッションで実際に実行・検証済み（全てpass、上記「Flutter SDKによる実検証・バグ修正」
+参照）。`flutter create .`以降（実機/エミュレータでの`flutter run`、APKビルド）はAndroid SDK
+が導入できないため未検証のまま。

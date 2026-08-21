@@ -4,8 +4,8 @@ import 'package:anshinmichi/firebase/firebase_push_notification_service.dart';
 
 void main() {
   test('mapRemoteMessageToAppNotification: notificationのtitle/bodyをそのまま使う', () {
-    final message = RemoteMessage(
-      notification: const RemoteNotification(title: '新機能のお知らせ', body: '目的地入力ができるようになりました'),
+    const message = RemoteMessage(
+      notification: RemoteNotification(title: '新機能のお知らせ', body: '目的地入力ができるようになりました'),
     );
     final result = mapRemoteMessageToAppNotification(message);
     expect(result.title, '新機能のお知らせ');
@@ -13,7 +13,7 @@ void main() {
   });
 
   test('mapRemoteMessageToAppNotification: notificationが無い場合はデフォルト値を使う', () {
-    final message = RemoteMessage();
+    const message = RemoteMessage();
     final result = mapRemoteMessageToAppNotification(message);
     expect(result.title, 'あんしんみちからのお知らせ');
     expect(result.body, '');

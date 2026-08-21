@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/route_result.dart';
+import '../services/location_service.dart' show LocationPermissionState;
 import '../services/route_search_service.dart' show RouteSearchException;
 import 'providers.dart';
 

@@ -31,7 +31,7 @@ class LocationService {
   Future<({double lat, double lon})?> getCurrentLocation() async {
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        desiredAccuracy: LocationAccuracy.medium,
       ).timeout(const Duration(seconds: 10));
       return (lat: position.latitude, lon: position.longitude);
     } catch (_) {
