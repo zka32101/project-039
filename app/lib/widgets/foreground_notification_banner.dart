@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import '../models/app_notification.dart';
 
@@ -13,32 +14,60 @@ import '../models/app_notification.dart';
 /// 本ウィジェットは`Overlay`に直接`OverlayEntry`を挿入する専用実装とし、
 /// 画面最上部（SafeArea考慮）にスライドイン＋自動消滅するバナーとして表示する。
 ///
-/// 使い方: `showForegroundNotificationBanner(overlayState, notification, onTap: ...)`
-void showForegroundNotificationBanner(
-  OverlayState overlay,
-  AppNotification notification, {
-  VoidCallback? onTap,
-  Duration displayDuration = const Duration(seconds: 5),
-}) {
-  late OverlayEntry entry;
-  final dismiss = _DismissHandle();
+/// 【複数通知のキュー表示】複数のお知らせがほぼ同時に届いた場合、以前は`OverlayEntry`が
+/// 独立して挿入されるため画面上部で重なって表示されてしまっていた。[ForegroundBannerQueue]は
+/// 常に1件だけを表示し、表示中の1件が消えた（自動タイムアウト／タップ／✕）タイミングで
+/// キューの次の1件を表示する、という直列キューとして動作する。
+class ForegroundBannerQueue {
+  final Queue<_QueuedNotification> _pending = Queue();
+  bool _isShowing = false;
 
-  entry = OverlayEntry(
-    builder: (context) => _ForegroundBanner(
-      notification: notification,
-      displayDuration: displayDuration,
-      dismissHandle: dismiss,
-      onTap: () {
-        dismiss.dismiss();
-        onTap?.call();
-      },
-      onDismissed: () {
-        if (entry.mounted) entry.remove();
-      },
-    ),
-  );
+  /// 通知をキューへ追加する。何も表示中でなければ即座に表示を開始し、
+  /// 表示中であれば現在のバナーが消えるまで待ってから表示する。
+  void enqueue(
+    OverlayState overlay,
+    AppNotification notification, {
+    VoidCallback? onTap,
+    Duration displayDuration = const Duration(seconds: 5),
+  }) {
+    _pending.add(_QueuedNotification(notification: notification, onTap: onTap, displayDuration: displayDuration));
+    _showNextIfIdle(overlay);
+  }
 
-  overlay.insert(entry);
+  void _showNextIfIdle(OverlayState overlay) {
+    if (_isShowing || _pending.isEmpty) return;
+    _isShowing = true;
+    final item = _pending.removeFirst();
+
+    late OverlayEntry entry;
+    final dismiss = _DismissHandle();
+
+    entry = OverlayEntry(
+      builder: (context) => _ForegroundBanner(
+        notification: item.notification,
+        displayDuration: item.displayDuration,
+        dismissHandle: dismiss,
+        onTap: () {
+          dismiss.dismiss();
+          item.onTap?.call();
+        },
+        onDismissed: () {
+          if (entry.mounted) entry.remove();
+          _isShowing = false;
+          _showNextIfIdle(overlay); // キューに次があれば続けて表示する
+        },
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+}
+
+class _QueuedNotification {
+  const _QueuedNotification({required this.notification, required this.onTap, required this.displayDuration});
+  final AppNotification notification;
+  final VoidCallback? onTap;
+  final Duration displayDuration;
 }
 
 /// アニメーション側から「外部（タップ等）から即座に消す」トリガーを受け取るための小さな仲介役。

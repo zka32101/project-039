@@ -22,6 +22,9 @@ class AnshinmichiApp extends ConsumerStatefulWidget {
 class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   StreamSubscription<AppNotification>? _foregroundMessageSubscription;
+  // 複数の通知がほぼ同時に届いても重ねて表示せず、1件ずつ直列に表示するキュー
+  // （`widgets/foreground_notification_banner.dart`参照）。Appの生存期間中は1つのインスタンスを使い回す。
+  final _bannerQueue = ForegroundBannerQueue();
 
   @override
   void initState() {
@@ -43,7 +46,7 @@ class _AnshinmichiAppState extends ConsumerState<AnshinmichiApp> {
     // widgets/foreground_notification_banner.dart 冒頭のコメント参照）。
     final overlay = _navigatorKey.currentState?.overlay;
     if (overlay == null) return;
-    showForegroundNotificationBanner(
+    _bannerQueue.enqueue(
       overlay,
       notification,
       onTap: () => _navigatorKey.currentState?.push(

@@ -154,6 +154,9 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
     ナビゲーション要素と競合しやすい・アイコン非対応・他のSnackBarと表示キューを共有してしまう
     という制約があったため、`Overlay`への直接挿入方式に置き換えた。
     バックグラウンド/終了時の通知表示はFCM標準動作に任せている
+  - `ForegroundBannerQueue`（同ファイル）が複数通知のキュー表示に対応。お知らせがほぼ同時に
+    複数届いても重ねて表示せず、常に1件だけを表示し、表示中の1件が消えた（自動タイムアウト／
+    タップ／✕）タイミングでキューの次の1件を表示する直列キューとして動作する
 - [x] オフライン地図の実キャッシュ（直近ルート1件分）: `services/route_result_cache.dart`
   （`RouteResultCache`インターフェース＋`SharedPreferencesRouteResultCache`）
   - `RemoteRouteSearchService`が`searchRoute`の成功結果を毎回ローカルへ保存。次回呼び出しが
@@ -199,8 +202,6 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
 - Lottieパッケージ本体の導入・専用の効果音アセット — 上記の通り、標準機能のみで代替した
   簡易版が実装済み。デザインアセット確定・ローカル環境での`pub get`検証ができ次第、
   `lottie`パッケージ＋専用音声ファイルへの置き換えを検討
-- フォアグラウンド通知バナーの複数通知キュー表示（現状は専用オーバーレイ化は済み。
-  同時に複数のお知らせが届いた場合の重ね表示・キュー管理は未対応）
 - オフライン地図キャッシュの拡張（現状は「直近の検索結果1件」のみ。道路網データ全体の
   ローカルキャッシュ・複数エリア分の保持は未実装）
 - 実地図タイルのネイティブ設定（`android/`/`ios/`ディレクトリの生成・APIキー登録）— Dart側の
@@ -292,6 +293,7 @@ test/
   destination_picker_view_test.dart   // 目的地入力画面のwidget test
   announcements_list_view_test.dart   // お知らせ一覧のwidget test
   firebase_push_notification_service_test.dart // RemoteMessage→AppNotification変換のunit test
+  foreground_notification_banner_test.dart // ForegroundBannerQueueの直列表示・タップのwidget test
 ```
 
 Cloud Functions本体は `../functions/` を参照（詳細は`../functions/README.md`）。
