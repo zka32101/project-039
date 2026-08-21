@@ -278,7 +278,8 @@ export const onBrightnessSpotApproved = onDocumentUpdated('brightnessSpots/{spot
 // isVerifiedUser()チェックで担保する）
 export const onSpotCommentCreated = onDocumentCreated('spotComments/{commentId}', async (event) => {
   const data = event.data.data();
-  const status = decideCommentModerationStatus(data.text);
+  const moderationConfig = await loadModerationConfig(db);
+  const status = decideCommentModerationStatus(data.text, moderationConfig.ngWords);
   await event.data.ref.update({ moderationStatus: status });
 });
 

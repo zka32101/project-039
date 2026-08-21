@@ -9,11 +9,21 @@
 // 反映する変換ロジックを提供する（実際のスケジュール実行は`index.js`の
 // `syncModerationConfigFromRemoteConfig`）。
 
+import { DEFAULT_NG_WORDS } from './moderationLogic.js';
+
 const PARAM_REGION = 'moderation_region';
 const PARAM_AUTO_APPROVE_ANONYMOUS = 'moderation_auto_approve_anonymous';
 const PARAM_TRUST_SCORE_THRESHOLD = 'moderation_trust_score_threshold';
+// NGワード辞書はRemote Config上ではカンマ区切りの1文字列として保持する（コンソールで
+// 運営者が直接編集しやすいよう、JSON配列文字列ではなくシンプルなCSV形式を採用）。
+const PARAM_NG_WORDS = 'moderation_ng_words';
 
-const FALLBACK = { region: 'JP', autoApproveAnonymous: true, trustScoreThreshold: 0.5 };
+const FALLBACK = {
+  region: 'JP',
+  autoApproveAnonymous: true,
+  trustScoreThreshold: 0.5,
+  ngWords: DEFAULT_NG_WORDS,
+};
 
 /**
  * Remote Configテンプレート（`getRemoteConfig().getTemplate()`の戻り値）から
@@ -30,6 +40,7 @@ export function extractModerationConfigFromTemplate(template) {
     region: readStringParam(params[PARAM_REGION], FALLBACK.region),
     autoApproveAnonymous: readBoolParam(params[PARAM_AUTO_APPROVE_ANONYMOUS], FALLBACK.autoApproveAnonymous),
     trustScoreThreshold: readNumberParam(params[PARAM_TRUST_SCORE_THRESHOLD], FALLBACK.trustScoreThreshold),
+    ngWords: readNgWordsParam(params[PARAM_NG_WORDS], FALLBACK.ngWords),
   };
 }
 
@@ -56,4 +67,17 @@ function readNumberParam(param, fallback) {
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+// カンマ区切りの文字列を配列へ変換する。前後の空白除去・空要素の除外を行い、
+// 全要素が空になった場合（未設定パラメータや空文字列）はフォールバック（既定辞書）を使う
+// （運営者が誤って空文字列を設定した場合にNGワードフィルタが無効化されるのを防ぐため）。
+function readNgWordsParam(param, fallback) {
+  const raw = readRawValue(param);
+  if (raw === undefined) return fallback;
+  const words = raw
+    .split(',')
+    .map((word) => word.trim())
+    .filter((word) => word.length > 0);
+  return words.length > 0 ? words : fallback;
 }

@@ -17,13 +17,15 @@
 export async function loadModerationConfig(db) {
   const doc = await db.collection('config').doc('moderation').get();
   if (!doc.exists) {
-    return { region: 'JP', autoApproveAnonymous: true, trustScoreThreshold: 0.5 };
+    return { region: 'JP', autoApproveAnonymous: true, trustScoreThreshold: 0.5, ngWords: DEFAULT_NG_WORDS };
   }
   const d = doc.data();
   return {
     region: d.region ?? 'JP',
     autoApproveAnonymous: d.autoApproveAnonymous ?? true,
     trustScoreThreshold: d.trustScoreThreshold ?? 0.5,
+    // Array.isArray チェックはFirestoreに不正な型（文字列等）が入っていた場合の防御。
+    ngWords: Array.isArray(d.ngWords) && d.ngWords.length > 0 ? d.ngWords : DEFAULT_NG_WORDS,
   };
 }
 
@@ -39,16 +41,30 @@ export function decideInitialStatus(moderationConfig, options = {}) {
   return moderationConfig.autoApproveAnonymous ? 'approved' : 'pending';
 }
 
-// 【プレースホルダー】実運用では専用のモデレーションAPI（Perspective API等）や
-// より網羅的な辞書に置き換えること。ここでは検証用途の最小限のNGワードのみ。
-const NG_WORDS = ['死ね', 'クズ', 'バカ野郎'];
+// 【本格実装】従来はコード内にハードコードされた最小限の辞書のみだったが、
+// 運営者がデプロイ無しで辞書を更新できるよう、Remote Config（`moderation_ng_words`パラメータ、
+// `remoteConfigSync.js`参照）→`config/moderation`ドキュメント（`ngWords`フィールド）→
+// 本関数、という既存のモデレーション設定と同じ同期経路に載せた。専用のモデレーションAPI
+// （Perspective API等）への置き換えは引き続き将来課題（外部サービス連携が必要なため）。
+// ドキュメント未同期時・辞書が空の場合のフォールバックとして最小限の初期値は残す。
+export const DEFAULT_NG_WORDS = ['死ね', 'クズ', 'バカ野郎'];
 
-export function containsNgWord(text) {
+// NGワード判定前の正規化: 半角/全角スペース・中黒・ハイフン・アンダースコアを除去してから比較する。
+// 「死　ね」「死・ね」のように区切り文字を挟んでNGワードフィルタを回避する典型的な手口を防ぐ
+// （文字自体を差し替える高度な回避（例: 伏字・同音異字）までは対応しない。あくまで簡易対策）。
+const EVASION_CHARS_PATTERN = /[\s・\-_]/g;
+
+function normalizeForNgWordMatch(text) {
+  return text.replace(EVASION_CHARS_PATTERN, '');
+}
+
+export function containsNgWord(text, ngWords = DEFAULT_NG_WORDS) {
   if (!text) return false;
-  return NG_WORDS.some((word) => text.includes(word));
+  const normalized = normalizeForNgWordMatch(text);
+  return ngWords.some((word) => normalized.includes(word));
 }
 
 /** コメントのモデレーション判定（NGワードのみ、投稿種別のようなModerationConfig分岐は無し） */
-export function decideCommentModerationStatus(text) {
-  return containsNgWord(text) ? 'rejected' : 'approved';
+export function decideCommentModerationStatus(text, ngWords = DEFAULT_NG_WORDS) {
+  return containsNgWord(text, ngWords) ? 'rejected' : 'approved';
 }

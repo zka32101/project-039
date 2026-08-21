@@ -159,5 +159,13 @@ firebase deploy --only functions,firestore:rules,firestore:indexes  # 本番デ�
   影響度」だけを調整する設計にしている（匿名投稿も0倍にはせず歓迎し続けることで、
   `ModerationConfig.autoApproveAnonymous`が意図する「ソフトローンチ初期は投稿密度優先」
   という方針を損なわないため）
-- NGワードフィルタ（`src/moderationLogic.js`）は検証用の最小限の辞書のみ。
-  実運用では専用のモデレーションAPIへの置き換えを推奨
+- NGワードフィルタ（`src/moderationLogic.js`）は、辞書をコード内ハードコードから
+  Remote Config（`moderation_ng_words`パラメータ、カンマ区切り文字列）→`config/moderation`
+  ドキュメントの`ngWords`フィールド、という既存のモデレーション設定と同じ同期経路
+  （`syncModerationConfigFromRemoteConfig`）へ載せる形に更新した。運営者はデプロイ無しで
+  Remote Configコンソールから辞書を更新できる（反映まで上記と同じく最大1時間のラグ）。
+  あわせて、半角/全角スペース・中黒・ハイフン等の区切り文字を挟んでNGワードフィルタを
+  回避する簡易的な手口（例:「死　ね」）を正規化で吸収するようにした（`normalizeForNgWordMatch`）。
+  ただし専用のモデレーションAPI（Perspective API等）が持つような文脈判定・表記ゆれ吸収
+  （伏字・同音異字等）までは対応しておらず、あくまで辞書ベースの簡易フィルタである点は
+  変わらない

@@ -70,6 +70,12 @@
     自宅・職場など、よく使う数か所を行き来する利用パターンに対応（同一エリアは重複させず
     上書き、複数該当時は最も新しいものを選択。`app/lib/services/route_result_cache.dart`、
     詳細は `app/README.md` 参照）
+12. コメントのNGワードフィルタをコード内ハードコードからRemote Config同期方式へ本格化。
+    運営者がデプロイ無しで辞書を更新できるよう、既存のモデレーション設定
+    （`moderation_region`等）と同じRemote Config→`config/moderation`ドキュメントの同期経路に
+    NGワード辞書（`moderation_ng_words`）も統合。あわせて、区切り文字を挟んだ簡易的な
+    フィルタ回避（例:「死　ね」）を正規化で吸収するようにした
+    （`functions/src/moderationLogic.js`、詳細は `functions/README.md` 参照）
 
 ## 次のアクション
 
