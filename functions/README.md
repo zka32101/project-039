@@ -26,7 +26,7 @@ Code引き継ぎ書 `functions/` ディレクトリ構成（routeSearch / shadow
 | `shadowCalcBatch` | Schedule（3時間毎） | 建物×太陽角度から`roadSegments`の`baseShadowScore`を再計算 |
 | `onShadeSpotCreated` / `onBrightnessSpotCreated` | Firestore `onDocumentCreated` | 投稿作成時のモデレーション判定（自動承認/承認待ち、連投レート制限含む）＋承認時の集計反映 |
 | `onShadeSpotApproved` / `onBrightnessSpotApproved` | Firestore `onDocumentUpdated` | 人力承認（pending→approved）時の集計反映 |
-| `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ |
+| `onSpotCommentCreated` | Firestore `onDocumentCreated` | コメントのNGワードフィルタ＋連投レート制限 |
 | `syncVerificationStatus` | Callable (`onCall`) | 電話番号認証完了後、ID Tokenの`phone_number`クレームを検証し`users/{uid}.isVerified`とAuth Custom Claim（`isVerified`）を更新 |
 | `onAnnouncementCreated` | Firestore `onDocumentCreated` | お知らせ（設計書Step7）作成をトリガーに`announcements`トピック購読者へFCM配信 |
 | `syncModerationConfigFromRemoteConfig` | Schedule（1時間毎） | Remote Configテンプレートの`moderation_*`パラメータを`config/moderation`へ自動反映 |
@@ -58,6 +58,15 @@ Custom Claimはトークン発行時点のスナップショットのため、�
 `RATE_LIMIT_MAX_SUBMISSIONS`参照）を確認する。上限（既定5件）を超えていれば、
 モデレーション設定が自動承認を許可していても'pending'（人力承認キュー）に留め置き、
 即座の地図反映を止める。誤検知時にも復旧可能な可逆的措置（削除・拒否ではなく保留）にしている。
+
+**コメントの不正利用対策（連投レート制限）**: `onSpotCommentCreated`はNGワードフィルタで
+'approved'と判定された場合でも、`checkAndIncrementRateLimit`（`searchRoute`と共通の固定ウィンドウ
+方式レート制限、`rateLimits/{key}`ドキュメント）で`comment:${submitterId}`ごとの直近10分間の
+コメント数を確認する（`COMMENT_RATE_LIMIT_WINDOW_MS`/`COMMENT_RATE_LIMIT_MAX_REQUESTS`、既定
+10件）。上限を超えていれば'pending'に差し替え、以降は人力確認待ちとする。コメントは
+`isVerifiedUser()`（電話番号SMS認証必須）のため投稿ほど気軽には量産できないが、一度認証を
+突破すれば無制限に連投できてしまう点は変わらないため、投稿・`searchRoute`と同様の対策を
+コメントにも拡張した。
 
 **主観的な投稿種別への荒らし対策（人通りが少ない）**: 「人通りが少ない」（`brightnessSpots`の
 `reasonType: 'low_foot_traffic'`）は、日陰・雨よけの有無のような客観的な観測と異なり、

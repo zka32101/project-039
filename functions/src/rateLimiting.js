@@ -86,6 +86,19 @@ export function decideRateLimitTransition(existing, nowMs, windowMs, maxRequests
   return { allow: true, nextState: { windowStartMs: existing.windowStartMs, count: existing.count + 1 } };
 }
 
+// ------------------------------------------------------------------
+// spotComments の不正利用対策（コメント連投によるスパム）
+//
+// 【背景】投稿（shadeSpots/brightnessSpots）と`searchRoute`にはレート制限があったが、
+// コメント（`spotComments`）には無かった。コメントは`isVerifiedUser()`（電話番号SMS認証）
+// 必須のため投稿ほど気軽には量産できないものの、一度認証を突破すれば無制限に連投できてしまう
+// 点は変わらない。NGワードフィルタ（`moderationLogic.js`）は個々のコメント内容の妥当性のみを見て
+// おり、大量連投そのものは防げないため、投稿と同じ`checkAndIncrementRateLimit`を使って対策する。
+// ------------------------------------------------------------------
+
+export const COMMENT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 直近10分間（投稿側のRATE_LIMIT_WINDOW_MSと同じ）
+export const COMMENT_RATE_LIMIT_MAX_REQUESTS = 10; // コメントは投稿より軽量な操作のため、投稿より緩めの上限にする
+
 /**
  * `key`（呼び出し元を一意に識別する文字列、例: `searchRoute:${uid}`）ごとのレート制限を、
  * Firestoreの`rateLimits/{key}`ドキュメント1件のカウンタで判定・更新する。

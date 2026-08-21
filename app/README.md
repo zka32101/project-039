@@ -118,8 +118,9 @@ Code引き継ぎ書の実装順序 1〜7＋一部2（Firebase接続）:
   - `onShadeSpotCreated`等（Firestoreトリガー）: 投稿のモデレーション判定を**クライアントを
     信用せずサーバー側で行う**よう変更（`firestore.rules`もクライアントによる自己承認を拒否する
     ルールへ更新済み）。承認時は道路区間の集計スコアも更新
-  - `onSpotCommentCreated`: コメントのNGワードフィルタ。辞書はRemote Config
-    （`moderation_ng_words`）→`config/moderation`同期経由で運営者が更新可能
+  - `onSpotCommentCreated`: コメントのNGワードフィルタ（辞書はRemote Config
+    `moderation_ng_words`→`config/moderation`同期経由で運営者が更新可能）＋連投レート制限
+    （直近10分間に一定件数を超えたら'pending'へ差し替え）
   - 詳細は`../functions/README.md`参照
 - [x] 本人確認基盤（電話番号SMS認証）: `VerificationService`（インターフェース＋
   Firebase未接続時のデモ実装＋`FirebaseVerificationService`）の二本立て
