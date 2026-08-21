@@ -63,6 +63,9 @@
    投稿は匿名ユーザーの投稿より集計への影響度を大きくする（1.5倍 vs 0.7倍）。承認可否自体は
    変えず、承認後のスコアへの反映度合いのみを調整（`functions/src/aggregation.js`の
    `computeTrustWeight`、詳細は `functions/README.md` 参照）
+10. フォアグラウンド通知バナーの複数通知キュー表示を実装。お知らせがほぼ同時に複数届いても
+    重ねて表示せず、`ForegroundBannerQueue`が常に1件だけを直列に表示する
+    （`app/lib/widgets/foreground_notification_banner.dart`、詳細は `app/README.md` 参照）
 
 ## 次のアクション
 
