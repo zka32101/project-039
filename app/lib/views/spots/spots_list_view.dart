@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/spot_comment.dart';
 import '../../models/spot_summary.dart';
 import '../../services/spot_vote_service.dart';
 import '../../viewmodels/providers.dart';
@@ -39,6 +40,14 @@ class _SpotsListViewState extends ConsumerState<SpotsListView> {
       if (!mounted) return;
       setState(() => _errorMessage = '投稿の取得に失敗しました');
     }
+  }
+
+  void _showComments(SpotSummary spot) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _SpotCommentsSheet(spot: spot),
+    );
   }
 
   Future<void> _vote(SpotSummary spot, SpotVoteType voteType) async {
@@ -110,6 +119,7 @@ class _SpotsListViewState extends ConsumerState<SpotsListView> {
           spot: spots[index],
           isVoting: _votingInProgress.contains(spots[index].id),
           onVote: (voteType) => _vote(spots[index], voteType),
+          onTap: () => _showComments(spots[index]),
         ),
       ),
     );
@@ -117,18 +127,20 @@ class _SpotsListViewState extends ConsumerState<SpotsListView> {
 }
 
 class _SpotTile extends StatelessWidget {
-  const _SpotTile({required this.spot, required this.isVoting, required this.onVote});
+  const _SpotTile({required this.spot, required this.isVoting, required this.onVote, required this.onTap});
 
   final SpotSummary spot;
   final bool isVoting;
   final void Function(SpotVoteType voteType) onVote;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      onTap: onTap,
       leading: const Icon(Icons.place_outlined),
       title: Text(spot.label),
-      subtitle: Text('確認 ${spot.votes} ・ 通報 ${spot.reportCount}'),
+      subtitle: Text('確認 ${spot.votes} ・ 通報 ${spot.reportCount} ・ タップでコメントを見る'),
       trailing: isVoting
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
           : Row(
@@ -146,6 +158,90 @@ class _SpotTile extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// 投稿1件に付けられた承認済みコメントを表示するボトムシート。「みんなの声」画面が
+/// 承認済みコメントを横断的に一覧表示するのに対し、こちらは特定の投稿（[spot]）に
+/// 絞り込んだ表示（`SpotCommentService.fetchForSpot`）。
+class _SpotCommentsSheet extends ConsumerStatefulWidget {
+  const _SpotCommentsSheet({required this.spot});
+
+  final SpotSummary spot;
+
+  @override
+  ConsumerState<_SpotCommentsSheet> createState() => _SpotCommentsSheetState();
+}
+
+class _SpotCommentsSheetState extends ConsumerState<_SpotCommentsSheet> {
+  List<SpotComment>? _comments;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final comments = await ref.read(spotCommentServiceProvider).fetchForSpot(widget.spot.id);
+      if (!mounted) return;
+      setState(() => _comments = comments);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _hasError = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${widget.spot.label}のコメント', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Flexible(child: _buildBody(context)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (_hasError) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('コメントの取得に失敗しました'),
+      );
+    }
+    final comments = _comments;
+    if (comments == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (comments.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('この投稿にはまだコメントがありません'),
+      );
+    }
+    return ListView.separated(
+      shrinkWrap: true,
+      itemCount: comments.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.forum_outlined),
+        title: Text(comments[index].text),
+      ),
     );
   }
 }

@@ -21,7 +21,22 @@ class FirestoreSpotCommentService implements SpotCommentService {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .get();
+    return _mapDocs(snapshot);
+  }
 
+  @override
+  Future<List<SpotComment>> fetchForSpot(String spotId, {int limit = 20}) async {
+    final snapshot = await _firestore
+        .collection('spotComments')
+        .where('spotId', isEqualTo: spotId)
+        .where('moderationStatus', isEqualTo: 'approved')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    return _mapDocs(snapshot);
+  }
+
+  List<SpotComment> _mapDocs(QuerySnapshot<Map<String, dynamic>> snapshot) {
     return snapshot.docs.map((doc) {
       final data = doc.data();
       final createdAt = data['createdAt'];
