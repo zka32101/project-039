@@ -1,0 +1,110 @@
+name: Comprehensive CI
+
+on:
+  push:
+    branches: [ main, claude/** ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter-check:
+    name: Flutter App (analyze & test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.x'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: |
+          cd app
+          flutter pub get
+
+      - name: Analyze
+        run: |
+          cd app
+          flutter analyze
+
+      - name: Test
+        run: |
+          cd app
+          flutter test
+
+  functions-check:
+    name: Cloud Functions (unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: |
+          cd functions
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd functions
+          npm test
+
+      - name: Check vulnerabilities
+        run: |
+          cd functions
+          npm audit --audit-level=moderate
+        continue-on-error: true
+
+  prototype-check:
+    name: Prototype Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: |
+          cd prototype
+          npm install
+
+      - name: Run verification
+        run: |
+          cd prototype
+          npm run verify
+        continue-on-error: false
+
+  status:
+    name: CI Status
+    needs: [ flutter-check, functions-check, prototype-check ]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check CI status
+        run: |
+          if [[ "${{ needs.flutter-check.result }}" == "failure" ]]; then
+            echo "❌ Flutter checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.functions-check.result }}" == "failure" ]]; then
+            echo "❌ Cloud Functions tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.prototype-check.result }}" == "failure" ]]; then
+            echo "❌ Prototype verification failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed"

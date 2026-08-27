@@ -1,0 +1,59 @@
+name: Deploy Cloud Functions
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - '.github/workflows/deploy-functions.yml'
+
+jobs:
+  deploy:
+    name: Deploy to Firebase
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: |
+          cd functions
+          npm ci
+
+      - name: Run tests (pre-deployment check)
+        run: |
+          cd functions
+          npm test
+
+      - name: Set up Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase deploy \
+            --only functions,firestore:rules,firestore:indexes \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --token ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "📦 Deployment completed"
+          echo "Project: ${{ secrets.FIREBASE_PROJECT_ID }}"
+          echo "Functions deployed at: $(date)"
+
+      - name: Notify deployment status
+        if: failure()
+        run: |
+          echo "❌ Deployment failed - check Firebase console for details"
+          exit 1
