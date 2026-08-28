@@ -33,16 +33,15 @@ jobs:
           cd prototype
           npm install
 
-      - name: Run route search verification (small dataset)
+      - name: Run prototype unit tests
         run: |
           cd prototype
-          npm run verify
-        continue-on-error: false
+          npm test
 
-      - name: Check performance metrics
+      - name: Run benchmark (performance measurement)
         run: |
           cd prototype
-          npm run perf:check
+          npm run benchmark
         continue-on-error: true
 
       - name: Upload verification results

@@ -81,11 +81,16 @@ jobs:
           cd prototype
           npm install
 
-      - name: Run verification
+      - name: Run unit tests
         run: |
           cd prototype
-          npm run verify
-        continue-on-error: false
+          npm test
+
+      - name: Run benchmark (performance check)
+        run: |
+          cd prototype
+          npm run benchmark
+        continue-on-error: true
 
   status:
     name: CI Status
