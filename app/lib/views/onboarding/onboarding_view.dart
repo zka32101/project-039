@@ -54,9 +54,10 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
       );
       return;
     }
+    final navigator = Navigator.of(context);
     await ref.read(onboardingStorageProvider).markCompleted();
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed('/home');
+    navigator.pushReplacementNamed('/home');
   }
 
   @override
@@ -70,9 +71,10 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
               alignment: Alignment.topRight,
               child: TextButton(
                 onPressed: () async {
+                  final navigator = Navigator.of(context);
                   await ref.read(onboardingStorageProvider).markCompleted();
                   if (!mounted) return;
-                  Navigator.of(context).pushReplacementNamed('/home');
+                  navigator.pushReplacementNamed('/home');
                 },
                 child: const Text('スキップ'),
               ),
