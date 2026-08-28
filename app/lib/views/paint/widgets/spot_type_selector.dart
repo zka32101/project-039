@@ -35,7 +35,7 @@ class _SpotTypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? type.color.withValues(alpha: 0.15) : Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: isSelected ? type.color.withOpacity(0.15) : Theme.of(context).colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),

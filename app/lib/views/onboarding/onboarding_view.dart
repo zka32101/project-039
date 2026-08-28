@@ -120,7 +120,7 @@ class _OnboardingViewState extends ConsumerState<OnboardingView> {
                   decoration: BoxDecoration(
                     color: i == _index
                         ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+                        : Theme.of(context).colorScheme.primary.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

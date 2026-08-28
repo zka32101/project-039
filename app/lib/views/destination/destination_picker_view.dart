@@ -117,7 +117,7 @@ class _DestinationPickerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final roadPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.5)
+      ..color = Colors.grey.withOpacity(0.5)
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
 
