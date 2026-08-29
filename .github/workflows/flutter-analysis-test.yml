@@ -1,0 +1,48 @@
+name: Flutter Analysis & Test
+
+on:
+  push:
+    branches: [ main, claude/** ]
+    paths:
+      - 'app/**'
+      - '.github/workflows/flutter-analysis-test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - '.github/workflows/flutter-analysis-test.yml'
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.x'
+          channel: 'stable'
+
+      - name: Get Flutter dependencies
+        run: |
+          cd app
+          flutter pub get
+
+      - name: Run Flutter Analyzer
+        run: |
+          cd app
+          flutter analyze
+
+      - name: Run Flutter Tests
+        run: |
+          cd app
+          flutter test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-results
+          path: app/test/

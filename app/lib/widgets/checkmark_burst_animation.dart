@@ -71,7 +71,7 @@ class _CheckmarkBurstPainter extends CustomPainter {
     final burstProgress = Curves.easeOut.transform((progress / 0.6).clamp(0.0, 1.0));
     if (burstProgress > 0) {
       final burstPaint = Paint()
-        ..color = color.withValues(alpha: (1 - burstProgress) * 0.35)
+        ..color = color.withOpacity((1 - burstProgress) * 0.35)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3;
       canvas.drawCircle(center, radius * (0.6 + burstProgress * 0.5), burstPaint);
