@@ -93,8 +93,12 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
 
     if (reflectMode == ReflectMode.immediate) {
       final edge = graph.edgeById[snap.edgeId]!;
-      final delta = (type == SpotType.brightness || type == SpotType.lowFootTraffic) ? 0.0 : 1.0;
-      edge.shadowScore = ((edge.shadowScore + delta) / 2).clamp(0, 1);
+      // 照度・低交通量スポットはshadowScoreではなく、
+      // バックエンド側でaggregatedBrightnessScoreとして集計されるため、
+      // クライアント側では更新しない
+      if (type != SpotType.brightness && type != SpotType.lowFootTraffic) {
+        edge.shadowScore = ((edge.shadowScore + 1.0) / 2).clamp(0, 1);
+      }
     }
 
     return SpotSubmissionResult(reflectMode: reflectMode, roadSegmentId: snap.edgeId);
