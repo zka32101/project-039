@@ -55,9 +55,18 @@ export function searchRoute(graph, shadowScores, originNodeId, destNodeId, weigh
   while (cur !== originNodeId) {
     const edgeId = prevEdge.get(cur);
     const prev = prevNode.get(cur);
-    if (!edgeId || !prev) break;
+    if (!edgeId || !prev) {
+      // 経路復元に失敗（ノードが接続されていない可能性）
+      console.error(`Path reconstruction failed: missing prevEdge or prevNode at node ${cur}`);
+      return null;
+    }
     const edge = edgeById.get(edgeId);
-    distanceM += edge?.distanceM ?? 0;
+    if (!edge) {
+      // エッジ情報が見つからない
+      console.error(`Edge not found: ${edgeId}`);
+      return null;
+    }
+    distanceM += edge.distanceM ?? 0;
     path.push(prev);
     cur = prev;
   }
