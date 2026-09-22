@@ -124,6 +124,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> retry() => _load();
 
+  /// 「お気に入りルート保存」機能: 現在選択中の目的地座標（未指定ならnull）。
+  ({double lat, double lon})? get currentDestination => _destination;
+
   /// 「目的地を選ぶ」（`DestinationPickerView`）で選択された座標に切り替え、再検索する。
   Future<void> setDestination(double lat, double lon) async {
     _destination = (lat: lat, lon: lon);

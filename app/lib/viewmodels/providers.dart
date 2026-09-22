@@ -12,8 +12,10 @@ import '../firebase/firebase_push_notification_service.dart';
 import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
 import '../firebase/firebase_spot_comment_service.dart';
+import '../firebase/firebase_spot_dispute_service.dart';
 import '../firebase/firebase_spot_list_service.dart';
 import '../firebase/firebase_spot_reaction_service.dart';
+import '../firebase/firebase_spot_retraction_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
 import '../firebase/firebase_spot_vote_service.dart';
 import '../firebase/firebase_verification_service.dart';
@@ -21,6 +23,7 @@ import '../purchases/revenuecat_subscription_service.dart';
 import '../services/analytics_service.dart';
 import '../services/announcement_service.dart';
 import '../services/auth_service.dart';
+import '../services/favorite_route_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_preference_storage.dart';
 import '../services/onboarding_storage.dart';
@@ -30,9 +33,11 @@ import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_comment_service.dart';
+import '../services/spot_dispute_service.dart';
 import '../services/spot_list_service.dart';
 import '../services/spot_photo_upload_service.dart';
 import '../services/spot_reaction_service.dart';
+import '../services/spot_retraction_service.dart';
 import '../services/spot_submission_queue.dart';
 import '../services/spot_submission_service.dart';
 import '../services/spot_vote_service.dart';
@@ -140,6 +145,18 @@ final spotVoteServiceProvider = Provider<SpotVoteService>((ref) {
       : LocalSpotVoteService();
 });
 
+final spotRetractionServiceProvider = Provider<SpotRetractionService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreSpotRetractionService(FirebaseFunctions.instance)
+      : LocalSpotRetractionService();
+});
+
+final spotDisputeServiceProvider = Provider<SpotDisputeService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreSpotDisputeService(FirebaseFunctions.instance)
+      : LocalSpotDisputeService();
+});
+
 // 「投稿への写真添付」機能: 実際のアップロード実装（`image_picker`/`firebase_storage`が必要）は
 // ローカル環境での追加待ち（`spot_photo_upload_service.dart`のコメント参照）。
 // DIの配線自体は用意しておき、実装ができ次第この行だけ差し替えればよいようにしている。
@@ -157,4 +174,10 @@ final spotListServiceProvider = Provider<SpotListService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirestoreSpotListService(FirebaseFirestore.instance)
       : LocalSpotListService();
+});
+
+// 「お気に入りルート保存」機能: Firebase接続有無に関わらず端末内(SharedPreferences)に
+// 保存するため、`firebaseAvailableProvider`による出し分けは不要。
+final favoriteRouteServiceProvider = Provider<FavoriteRouteService>((ref) {
+  return SharedPreferencesFavoriteRouteService();
 });

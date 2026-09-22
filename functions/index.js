@@ -43,6 +43,11 @@ import {
 import { buildSpatialIndex, nearestNodeIdIndexed } from './src/spatialIndex.js';
 import { extractModerationConfigFromTemplate } from './src/remoteConfigSync.js';
 import { buildSegmentBreakdown } from './src/routeResponse.js';
+import {
+  decideRetractionEligibility,
+  decideDisputeEligibility,
+  validateDisputeMessage,
+} from './src/spotOwnerActions.js';
 import { buildAnnouncementMessage } from './src/announcementNotification.js';
 
 initializeApp();
@@ -406,6 +411,115 @@ export const voteSpot = onCall(async (request) => {
     );
     tx.update(spotRef, { votes: effect.votes, reportCount: effect.reportCount, status: effect.status });
     tx.set(voteRef, { spotKind, spotId, uid: request.auth.uid, voteType, createdAt: new Date() });
+  });
+
+  return { success: true };
+});
+
+// ------------------------------------------------------------------
+// requestRetraction: 投稿の取り消し申請
+// 「投稿を確認」画面の確認投票／通報（voteSpot）は他者からの操作だが、こちらは投稿者
+// 本人が自分の誤投稿・古くなった投稿を取り消すための操作。statusを'retracted'にすることで
+// 「投稿を確認」画面（status=='approved'のみ取得）や経路探索（roadSegmentsの集計）からは
+// 見えなくなるが、ドキュメント自体は削除しない（可逆的な保留にとどめる既存の設計方針と同じ。
+// `spotVoting.js`のreport同様、集計値=aggregatedShadeScore/aggregatedBrightnessScoreの
+// 数値そのものを遡って打ち消す仕組みは無い。加重移動平均という集計方式自体の既知の制約で、
+// 通報による差し戻しでも同様）。マイページ（`MySubmissionsView`）では'retracted'も表示され、
+// 取り消し済みであることを本人が確認できる。
+// ------------------------------------------------------------------
+export const requestRetraction = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const { spotKind, spotId } = request.data ?? {};
+  if (spotKind !== 'shade' && spotKind !== 'brightness') {
+    throw new HttpsError('invalid-argument', 'spotKindはshadeまたはbrightnessである必要があります');
+  }
+  if (typeof spotId !== 'string' || spotId.length === 0) {
+    throw new HttpsError('invalid-argument', 'spotIdが不正です');
+  }
+
+  const allowed = await checkAndIncrementRateLimit(db, `retract:${request.auth.uid}`, {
+    windowMs: REACTION_RATE_LIMIT_WINDOW_MS,
+    maxRequests: REACTION_RATE_LIMIT_MAX_REQUESTS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    throw new HttpsError('resource-exhausted', '短時間の操作が集中しています。しばらく待ってから再度お試しください');
+  }
+
+  const spotRef = db.collection(spotKind === 'shade' ? 'shadeSpots' : 'brightnessSpots').doc(spotId);
+
+  await db.runTransaction(async (tx) => {
+    const spotSnapshot = await tx.get(spotRef);
+    if (!spotSnapshot.exists) {
+      throw new HttpsError('not-found', '投稿が見つかりません');
+    }
+    const eligibility = decideRetractionEligibility(spotSnapshot.data(), request.auth.uid);
+    if (!eligibility.allowed) {
+      if (eligibility.reason === 'not-owner') {
+        throw new HttpsError('permission-denied', '自分の投稿のみ取り消せます');
+      }
+      throw new HttpsError('already-exists', 'この投稿はすでに取り消し済みです');
+    }
+    tx.update(spotRef, { status: 'retracted', retractedAt: new Date() });
+  });
+
+  return { success: true };
+});
+
+// ------------------------------------------------------------------
+// disputeSpotReport: 通報された投稿者による異議申し立て
+// 通報（voteSpot の report）が閾値に達すると承認済みの投稿が人力再審査待ち（pending）へ
+// 差し戻される（spotVoting.js の REPORT_HOLD_THRESHOLD）。これまで投稿者側には
+// 「なぜ差し戻されたか分からないまま黙って再審査を待つ」以外の手段が無かった。
+// 本人が一言説明を添えられるようにし、モデレーション時の判断材料にする
+// （このアプリ自体にモデレーション用の承認UIは無く、運用者がFirebase Console等で
+// 直接確認する想定。`disputeMessage`フィールドはその参照用）。
+// ------------------------------------------------------------------
+export const disputeSpotReport = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const { spotKind, spotId, message } = request.data ?? {};
+  if (spotKind !== 'shade' && spotKind !== 'brightness') {
+    throw new HttpsError('invalid-argument', 'spotKindはshadeまたはbrightnessである必要があります');
+  }
+  if (typeof spotId !== 'string' || spotId.length === 0) {
+    throw new HttpsError('invalid-argument', 'spotIdが不正です');
+  }
+  const messageCheck = validateDisputeMessage(message);
+  if (!messageCheck.valid) {
+    throw new HttpsError(
+      'invalid-argument',
+      messageCheck.reason === 'empty' ? 'メッセージを入力してください' : 'メッセージが長すぎます',
+    );
+  }
+
+  const allowed = await checkAndIncrementRateLimit(db, `dispute:${request.auth.uid}`, {
+    windowMs: REACTION_RATE_LIMIT_WINDOW_MS,
+    maxRequests: REACTION_RATE_LIMIT_MAX_REQUESTS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    throw new HttpsError('resource-exhausted', '短時間の操作が集中しています。しばらく待ってから再度お試しください');
+  }
+
+  const spotRef = db.collection(spotKind === 'shade' ? 'shadeSpots' : 'brightnessSpots').doc(spotId);
+
+  await db.runTransaction(async (tx) => {
+    const spotSnapshot = await tx.get(spotRef);
+    if (!spotSnapshot.exists) {
+      throw new HttpsError('not-found', '投稿が見つかりません');
+    }
+    const eligibility = decideDisputeEligibility(spotSnapshot.data(), request.auth.uid);
+    if (!eligibility.allowed) {
+      if (eligibility.reason === 'not-owner') {
+        throw new HttpsError('permission-denied', '自分の投稿のみ異議申し立てできます');
+      }
+      throw new HttpsError('failed-precondition', 'この投稿は現在異議申し立ての対象ではありません');
+    }
+    tx.update(spotRef, { disputeMessage: message, disputedAt: new Date() });
   });
 
   return { success: true };
