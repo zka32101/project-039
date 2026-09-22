@@ -199,15 +199,21 @@ class _TypeSelectionStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('何を投稿しますか？', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('道の様子を選んでください'),
-        const SizedBox(height: 20),
-        SpotTypeSelector(selected: null, onSelected: onSelected),
-      ],
+    // 危険・困りごと系の追加で投稿種別が8種に増え、画面高によっては折り返し後の行が
+    // 収まりきらなくなったため、SingleChildScrollViewでスクロール可能にする
+    // （SpotTypeSelector自体はshrinkWrap+NeverScrollableScrollPhysicsのため、
+    // 外側にスクロール領域が無いと画面に収まらない分がレイアウトされない）。
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('何を投稿しますか？', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 4),
+          const Text('道の様子を選んでください'),
+          const SizedBox(height: 20),
+          SpotTypeSelector(selected: null, onSelected: onSelected),
+        ],
+      ),
     );
   }
 }
