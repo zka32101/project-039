@@ -65,6 +65,20 @@ class _RoutePainter extends CustomPainter {
       return Offset(x, y);
     }
 
+    // 「複数ルート提案」機能: 代替ルート（最短優先）があれば、安心優先ルートより先に
+    // 控えめなグレーの点線で描画する（安心優先ルートを常に前面・強調表示にするため）。
+    final alternative = route.alternativeRoute;
+    if (alternative != null) {
+      for (final RoadSegment segment in alternative.segments) {
+        final p1 = project(segment.from.lat, segment.from.lon);
+        final p2 = project(segment.to.lat, segment.to.lon);
+        _drawDashedLine(canvas, p1, p2, Paint()
+          ..color = Colors.grey.withOpacity(0.6)
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round);
+      }
+    }
+
     // 経路（区間ごとに安心スコアで色分け）
     for (final RoadSegment segment in route.segments) {
       final p1 = project(segment.from.lat, segment.from.lon);
@@ -99,6 +113,26 @@ class _RoutePainter extends CustomPainter {
         ..lineTo(destPoint.dx + 8, destPoint.dy + 6)
         ..close();
       canvas.drawPath(path, destPaint);
+    }
+  }
+
+  /// CustomPainterのCanvasには点線描画APIが無いため、一定間隔で線分を分割して描く。
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    const dashLength = 6.0;
+    const gapLength = 5.0;
+    final totalLength = (end - start).distance;
+    if (totalLength == 0) return;
+    final direction = (end - start) / totalLength;
+
+    var drawn = 0.0;
+    var isDash = true;
+    while (drawn < totalLength) {
+      final segmentLength = (isDash ? dashLength : gapLength).clamp(0.0, totalLength - drawn) as double;
+      final segmentStart = start + direction * drawn;
+      final segmentEnd = start + direction * (drawn + segmentLength);
+      if (isDash) canvas.drawLine(segmentStart, segmentEnd, paint);
+      drawn += segmentLength;
+      isDash = !isDash;
     }
   }
 

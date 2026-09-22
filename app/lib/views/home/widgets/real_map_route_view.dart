@@ -59,6 +59,20 @@ class _RealMapRouteViewState extends State<RealMapRouteView> {
     final route = widget.route;
 
     final polylines = <Polyline>{
+      // 「複数ルート提案」機能: 代替ルート（最短優先）があれば、安心優先ルートの下に
+      // 控えめなグレーの点線で先に描画する（安心優先ルートが常に前面・強調表示になるよう順序に注意）。
+      if (route.alternativeRoute != null)
+        for (final RoadSegment segment in route.alternativeRoute!.segments)
+          Polyline(
+            polylineId: PolylineId('alt_${segment.id}'),
+            points: [
+              LatLng(segment.from.lat, segment.from.lon),
+              LatLng(segment.to.lat, segment.to.lon),
+            ],
+            color: Colors.grey.withOpacity(0.6),
+            width: 4,
+            patterns: [PatternItem.dash(12), PatternItem.gap(8)],
+          ),
       for (final RoadSegment segment in route.segments)
         Polyline(
           polylineId: PolylineId(segment.id),

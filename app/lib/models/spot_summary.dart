@@ -11,6 +11,7 @@ class SpotSummary {
     required this.votes,
     required this.reportCount,
     this.createdAt,
+    this.status = 'approved',
   });
 
   final String id;
@@ -23,4 +24,9 @@ class SpotSummary {
   final int votes;
   final int reportCount;
   final DateTime? createdAt;
+
+  /// モデレーション状態（'pending'/'approved'）。「投稿を確認」画面（承認済みのみ）では
+  /// 常に'approved'固定だが、「マイページ」（自分の投稿履歴）では審査待ちの投稿も
+  /// 表示するため、状態をそのまま保持する。
+  final String status;
 }

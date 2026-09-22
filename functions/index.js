@@ -20,8 +20,8 @@ import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/fire
 
 import { buildGraph } from './src/buildGraph.js';
 import { computeShadowScores } from './src/shadowScore.js';
-import { searchRoute as searchRouteEngine } from './src/routeSearch.js';
-import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScores } from './src/firestoreRoadNetwork.js';
+import { searchRouteAlternatives as searchRouteEngine } from './src/routeSearch.js';
+import { loadRoadNetworkGeometry, loadBuildings, loadRoadSegmentScoreDetails } from './src/firestoreRoadNetwork.js';
 import { loadModerationConfig, decideInitialStatus, decideCommentModerationStatus } from './src/moderationLogic.js';
 import {
   exceedsRateLimit,
@@ -31,6 +31,8 @@ import {
   SEARCH_ROUTE_RATE_LIMIT_MAX_REQUESTS,
   COMMENT_RATE_LIMIT_WINDOW_MS,
   COMMENT_RATE_LIMIT_MAX_REQUESTS,
+  REACTION_RATE_LIMIT_WINDOW_MS,
+  REACTION_RATE_LIMIT_MAX_REQUESTS,
 } from './src/rateLimiting.js';
 import { applyApprovedSpotToRoadSegment, computeTrustWeight } from './src/aggregation.js';
 import {
@@ -77,16 +79,26 @@ async function loadCachedGraph() {
   // グラフと同じTTLでキャッシュし、実データ規模でもリクエストごとの再構築を避ける。
   const spatialIndex = buildSpatialIndex(graph.nodeById.values());
 
-  const scores = await loadRoadSegmentScores(db);
+  // 影・明るさを分離して保持する（日中/夜間モードの経路探索切り替え用。`searchRoute`参照）。
+  const scoreDetails = await loadRoadSegmentScoreDetails(db);
   for (const edge of graph.edges) {
-    edge.shadowScore = scores.get(edge.id) ?? 0;
+    const detail = scoreDetails.get(edge.id);
+    edge.shadeScore = detail?.shade ?? 0;
+    edge.brightnessScore = detail?.brightness ?? 0;
+    // 後方互換: buildSegmentBreakdown等、既存コードが参照する統合スコア
+    edge.shadowScore = detail?.comfortScore ?? 0;
   }
   // computeShadowScores()による自動計算のフォールバックは、roadSegmentsに
   // baseShadowScoreが未投入の場合のみ使う（通常はshadowCalcBatchが事前計算済みの想定）
-  if (scores.size === 0) {
+  if (scoreDetails.size === 0) {
     const buildings = await loadBuildings(db);
     const shadowScores = computeShadowScores(graph, buildings, new Date());
-    for (const edge of graph.edges) edge.shadowScore = shadowScores.get(edge.id) ?? 0;
+    for (const edge of graph.edges) {
+      const shade = shadowScores.get(edge.id) ?? 0;
+      edge.shadeScore = shade;
+      edge.brightnessScore = 0;
+      edge.shadowScore = shade;
+    }
   }
 
   _graphCache = { graph, spatialIndex, loadedAt: now };
@@ -109,13 +121,16 @@ export const searchRoute = onCall(async (request) => {
     throw new HttpsError('resource-exhausted', '短時間に検索が集中しています。しばらく待ってから再度お試しください');
   }
 
-  const { originLat, originLon, destLat, destLon, shadeWeight } = request.data ?? {};
+  const { originLat, originLon, destLat, destLon, shadeWeight, mode } = request.data ?? {};
   if ([originLat, originLon, destLat, destLon].some((v) => typeof v !== 'number')) {
     throw new HttpsError('invalid-argument', 'originLat/originLon/destLat/destLonは数値で指定してください');
   }
+  if (mode !== undefined && mode !== 'day' && mode !== 'night') {
+    throw new HttpsError('invalid-argument', "modeは'day'または'night'である必要があります");
+  }
 
-  // graph.edges[].shadowScoreはloadCachedGraph()内でキャッシュ済みのroadSegmentsスコアが
-  // 反映されている（上記コメント参照。呼び出しのたびに全件再読み込みはしない）。
+  // graph.edges[].shadeScore/brightnessScoreはloadCachedGraph()内でキャッシュ済みの
+  // roadSegmentsスコアが反映されている（上記コメント参照。呼び出しのたびに全件再読み込みはしない）。
   const { graph, spatialIndex } = await loadCachedGraph();
   if (graph.nodeById.size === 0) {
     throw new HttpsError('failed-precondition', '道路網データが投入されていません（seed未実施の可能性）');
@@ -123,15 +138,20 @@ export const searchRoute = onCall(async (request) => {
 
   const originId = nearestNodeIdIndexed(spatialIndex, originLat, originLon);
   const destId = nearestNodeIdIndexed(spatialIndex, destLat, destLon);
-  const result = searchRouteEngine(graph, new Map(graph.edges.map((e) => [e.id, e.shadowScore])), originId, destId, {
+  // 日中モード（既定）: 日陰の多さを評価軸にする。夜間モード: 明るさ（人通しの少なさ対策含む）
+  // を評価軸にする。「時間帯によって重視したい安心要素が違う」というニーズに対応する
+  // （夜は日陰より明るい道の方が安心、というのが設計意図）。
+  const scoreKey = mode === 'night' ? 'brightnessScore' : 'shadeScore';
+  const scoreMap = new Map(graph.edges.map((e) => [e.id, e[scoreKey]]));
+  const alternatives = searchRouteEngine(graph, scoreMap, originId, destId, {
     shadeWeight: shadeWeight ?? 0.6,
   });
 
-  if (!result) {
+  if (!alternatives) {
     throw new HttpsError('not-found', '指定地点間の経路が見つかりませんでした');
   }
 
-  return {
+  const toResponse = (result) => ({
     path: result.path,
     distanceM: result.distanceM,
     cost: result.cost,
@@ -142,6 +162,14 @@ export const searchRoute = onCall(async (request) => {
     // クライアント（SchematicMapView）が区間ごとの色分け表示をできるよう、
     // 経路上の各区間の距離・安心スコアを併せて返す
     segments: buildSegmentBreakdown(graph, result.path),
+  });
+
+  return {
+    mode: mode ?? 'day',
+    ...toResponse(alternatives.recommended),
+    // 「複数ルート提案」: 最短ルートが安心優先ルートと異なる場合のみ別案として提示する
+    // （同一の場合は`alternativeRoute: null`とし、クライアント側で重複表示を避けられるようにする）
+    alternativeRoute: alternatives.sameAsRecommended ? null : toResponse(alternatives.shortest),
   };
 });
 
@@ -223,10 +251,19 @@ async function loadTrustWeight(submitterId) {
   return computeTrustWeight(doc.exists ? doc.data() : null);
 }
 
+// 「危険・困りごと」系の投稿種別（`app/lib/models/spot_type.dart`の`SpotType.isHazardReport`と対応）。
+// 段差・階段の暗さ・歩道の狭さは、日陰・雨よけのような「安心スコア」（comfortScore）の
+// 構成要素ではなく歩行の安全性に関する別軸の情報のため、承認時も集計（shade/brightnessスコア）
+// には反映しない（表示情報としてのみ扱う。安心スコアへの統合は専用の設計検討が必要なため
+// 次スプリント送り、`app/lib/models/spot_type.dart`のコメント参照）。
+const HAZARD_SPOT_TYPES = ['uneven_ground', 'dark_stairs', 'narrow_sidewalk'];
+
 async function handleSpotCreated(snapshot, spotKind) {
   const data = snapshot.data();
+  const isHazardReport = spotKind === 'shade' && HAZARD_SPOT_TYPES.includes(data.type);
   const moderationConfig = await loadModerationConfig(db);
-  const requiresManualReview = spotKind === 'brightness' && data.reasonType === 'low_foot_traffic';
+  const requiresManualReview =
+    (spotKind === 'brightness' && data.reasonType === 'low_foot_traffic') || isHazardReport;
   let status = decideInitialStatus(moderationConfig, { requiresManualReview });
 
   if (status === 'approved') {
@@ -238,13 +275,15 @@ async function handleSpotCreated(snapshot, spotKind) {
 
   if (status === 'approved') {
     await snapshot.ref.update({ status: 'approved' });
-    const trustWeight = await loadTrustWeight(data.submitterId);
-    await applyApprovedSpotToRoadSegment(
-      db,
-      data.roadSegmentId,
-      spotKind === 'brightness' ? { brightness: 0 } : { shade: 1 },
-      trustWeight,
-    );
+    if (!isHazardReport) {
+      const trustWeight = await loadTrustWeight(data.submitterId);
+      await applyApprovedSpotToRoadSegment(
+        db,
+        data.roadSegmentId,
+        spotKind === 'brightness' ? { brightness: 0 } : { shade: 1 },
+        trustWeight,
+      );
+    }
   }
   // status === 'pending' の場合はクライアントが設定した値のまま（人力承認キューで後日処理）
 }
@@ -263,6 +302,7 @@ async function handleSpotApproved(change, spotKind) {
   const before = change.before.data();
   const after = change.after.data();
   if (before.status === after.status || after.status !== 'approved') return;
+  if (spotKind === 'shade' && HAZARD_SPOT_TYPES.includes(after.type)) return; // 危険・困りごと系は集計対象外
 
   const trustWeight = await loadTrustWeight(after.submitterId);
   await applyApprovedSpotToRoadSegment(
@@ -369,6 +409,50 @@ export const voteSpot = onCall(async (request) => {
   });
 
   return { success: true };
+});
+
+// ------------------------------------------------------------------
+// reactToComment: コメントへの軽量リアクション（共感ボタン）
+// 確認投票／通報（voteSpot）はモデレーション目的の重い操作で、コメント欄「みんなの声」に
+// 気軽な共感表現の手段が無かった。1コメントにつき1ユーザー1回まで
+// （`commentReactions/{commentId}_{uid}`の存在チェック、voteSpotの二重投票防止と同じ仕組み）。
+// ------------------------------------------------------------------
+export const reactToComment = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'サインインが必要です');
+  }
+  const { commentId } = request.data ?? {};
+  if (typeof commentId !== 'string' || commentId.length === 0) {
+    throw new HttpsError('invalid-argument', 'commentIdが不正です');
+  }
+
+  const allowed = await checkAndIncrementRateLimit(db, `reaction:${request.auth.uid}`, {
+    windowMs: REACTION_RATE_LIMIT_WINDOW_MS,
+    maxRequests: REACTION_RATE_LIMIT_MAX_REQUESTS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    throw new HttpsError('resource-exhausted', '短時間の操作が集中しています。しばらく待ってから再度お試しください');
+  }
+
+  const commentRef = db.collection('spotComments').doc(commentId);
+  const reactionRef = db.collection('commentReactions').doc(`${commentId}_${request.auth.uid}`);
+
+  const likeCount = await db.runTransaction(async (tx) => {
+    const [commentSnapshot, reactionSnapshot] = await Promise.all([tx.get(commentRef), tx.get(reactionRef)]);
+    if (!commentSnapshot.exists) {
+      throw new HttpsError('not-found', 'コメントが見つかりません');
+    }
+    if (reactionSnapshot.exists) {
+      throw new HttpsError('already-exists', 'このコメントにはすでに共感済みです');
+    }
+    const newCount = (commentSnapshot.data().likeCount ?? 0) + 1;
+    tx.update(commentRef, { likeCount: newCount });
+    tx.set(reactionRef, { commentId, uid: request.auth.uid, createdAt: new Date() });
+    return newCount;
+  });
+
+  return { success: true, likeCount };
 });
 
 // ------------------------------------------------------------------

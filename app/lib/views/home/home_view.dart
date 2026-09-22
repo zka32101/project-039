@@ -11,6 +11,7 @@ import '../destination/destination_picker_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
 import '../settings/settings_view.dart';
+import '../spots/my_submissions_view.dart';
 import '../spots/spots_list_view.dart';
 import 'widgets/real_map_route_view.dart';
 import 'widgets/schematic_map_view.dart';
@@ -46,6 +47,13 @@ class HomeView extends ConsumerWidget {
             tooltip: 'お知らせ',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'マイページ',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MySubmissionsView()),
             ),
           ),
           IconButton(

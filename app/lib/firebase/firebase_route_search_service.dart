@@ -32,6 +32,7 @@ class RemoteRouteSearchService implements RouteSearchService {
     double shadeWeight = 0.6,
     double? destLat,
     double? destLon,
+    RouteMode mode = RouteMode.day,
   }) async {
     try {
       await _authService.ensureSignedIn();
@@ -55,6 +56,7 @@ class RemoteRouteSearchService implements RouteSearchService {
         'destLat': effectiveDestLat,
         'destLon': effectiveDestLon,
         'shadeWeight': shadeWeight,
+        'mode': mode.wireValue,
       });
     } on FirebaseFunctionsException catch (e) {
       if (e.code == 'not-found') return null;
@@ -87,6 +89,8 @@ class RemoteRouteSearchService implements RouteSearchService {
 
 /// searchRoute Callable Functionのレスポンス(JSON相当)を`RouteResult`へ変換する。
 /// `RemoteRouteSearchService`から純粋なデータ変換部分のみを切り出し、unit testしやすくしている。
+/// 「複数ルート提案」機能: `alternativeRoute`キーがあれば1段だけ再帰的に変換する
+/// （サーバー側は代替ルートにさらに代替ルートを含めないため、無限再帰の心配はない）。
 RouteResult parseSearchRouteResponse(Map<String, dynamic> data) {
   final nodes = (data['nodes'] as List)
       .map((n) => RoadNode(
@@ -122,10 +126,16 @@ RouteResult parseSearchRouteResponse(Map<String, dynamic> data) {
   final totalWeighted = segments.fold<double>(0, (sum, s) => sum + s.comfortScore * s.distanceM);
   final averageComfort = distanceM > 0 ? totalWeighted / distanceM : 0.0;
 
+  final alternativeRouteData = data['alternativeRoute'];
+
   return RouteResult(
     nodes: nodes,
     segments: segments,
     distanceM: distanceM,
     averageComfortScore: averageComfort,
+    mode: RouteMode.fromWireValue(data['mode'] as String?),
+    alternativeRoute: alternativeRouteData != null
+        ? parseSearchRouteResponse(Map<String, dynamic>.from(alternativeRouteData as Map))
+        : null,
   );
 }

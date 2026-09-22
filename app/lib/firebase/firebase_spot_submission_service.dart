@@ -44,13 +44,28 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
     required List<({double lat, double lon})> trace,
     required SpotType type,
     String? comment,
+    String? photoUrl,
   }) async {
     final graph = await _repository.loadGraph();
     final snap = snapTraceToRoad(trace, graph);
     if (snap == null) {
       throw SpotSubmissionException('道路の近くをなぞってください（道路から離れすぎています）');
     }
+    return _submitToRoadSegment(snap.edgeId, type, comment, photoUrl);
+  }
 
+  @override
+  Future<SpotSubmissionResult> resubmit(SpotSubmissionRequest request) async {
+    return _submitToRoadSegment(request.roadSegmentId, request.type, request.comment, request.photoUrl);
+  }
+
+  Future<SpotSubmissionResult> _submitToRoadSegment(
+    String roadSegmentId,
+    SpotType type,
+    String? comment,
+    String? photoUrl,
+  ) async {
+    final graph = await _repository.loadGraph();
     final submitterId = await _authService.ensureSignedIn();
     final moderationConfig = _moderationConfigProvider();
     final reflectMode = !type.requiresManualReview && moderationConfig.autoApproveAnonymous
@@ -62,22 +77,24 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
       // UIはまだ明るさレベル(dark/normal/bright)の選択に対応していないため、
       // 「暗いので投稿する」という最も典型的な利用動機を想定し暫定的に'dark'固定とする（次スプリントで選択UI追加）。
       spotRef = await _firestore.collection('brightnessSpots').add({
-        'roadSegmentId': snap.edgeId,
+        'roadSegmentId': roadSegmentId,
         'brightnessLevel': 'dark',
         'reasonType': type == SpotType.lowFootTraffic ? 'low_foot_traffic' : 'dark',
         'submitterId': submitterId,
         'status': 'pending', // Cloud Functions側で承認可否を判定し更新する
         'createdAt': FieldValue.serverTimestamp(),
+        if (photoUrl != null) 'photoUrl': photoUrl,
       });
     } else {
       spotRef = await _firestore.collection('shadeSpots').add({
-        'roadSegmentId': snap.edgeId,
+        'roadSegmentId': roadSegmentId,
         'type': _shadeSpotTypeName(type),
         'timeDependent': type.isTimeDependent,
         'submitterId': submitterId,
         'status': 'pending', // Cloud Functions側で承認可否を判定し更新する
         'createdAt': FieldValue.serverTimestamp(),
         'votes': 0,
+        if (photoUrl != null) 'photoUrl': photoUrl,
       });
     }
 
@@ -92,16 +109,18 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
     }
 
     if (reflectMode == ReflectMode.immediate) {
-      final edge = graph.edgeById[snap.edgeId]!;
+      final edge = graph.edgeById[roadSegmentId];
       // 照度・低交通量スポットはshadowScoreではなく、
       // バックエンド側でaggregatedBrightnessScoreとして集計されるため、
-      // クライアント側では更新しない
-      if (type != SpotType.brightness && type != SpotType.lowFootTraffic) {
+      // クライアント側では更新しない。危険・困りごと系（`SpotType.isHazardReport`）は
+      // 安心スコアの集計対象外（`functions/index.js`の`handleSpotCreated`参照）のため、
+      // 同様にshadowScoreを更新しない。
+      if (edge != null && type != SpotType.brightness && type != SpotType.lowFootTraffic && !type.isHazardReport) {
         edge.shadowScore = ((edge.shadowScore + 1.0) / 2).clamp(0, 1);
       }
     }
 
-    return SpotSubmissionResult(reflectMode: reflectMode, roadSegmentId: snap.edgeId);
+    return SpotSubmissionResult(reflectMode: reflectMode, roadSegmentId: roadSegmentId);
   }
 
   String _shadeSpotTypeName(SpotType type) {
@@ -112,6 +131,12 @@ class FirestoreSpotSubmissionService implements SpotSubmissionService {
         return 'arcade';
       case SpotType.rainShelter:
         return 'rain_shelter';
+      case SpotType.unevenGround:
+        return 'uneven_ground';
+      case SpotType.darkStairs:
+        return 'dark_stairs';
+      case SpotType.narrowSidewalk:
+        return 'narrow_sidewalk';
       case SpotType.brightness:
       case SpotType.lowFootTraffic:
         throw ArgumentError('${type.name}はbrightnessSpotsコレクションで扱う');

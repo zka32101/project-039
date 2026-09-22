@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/route_result.dart';
 import '../services/location_service.dart' show LocationPermissionState;
+import '../services/queueing_spot_submission_service.dart';
 import '../services/route_search_service.dart' show RouteSearchException;
 import 'providers.dart';
 
@@ -34,6 +37,9 @@ class HomeReady extends HomeState {
   /// ユーザーが「目的地を選ぶ」で明示的に指定した目的地かどうか
   /// （falseの場合はAha Moment用のデモ目的地が使われている）。
   final bool hasCustomDestination;
+
+  /// 現在の経路探索モード（日中/夜間）。`route.mode`と同じ値。
+  RouteMode get mode => route.mode;
 }
 
 class HomeError extends HomeState {
@@ -55,6 +61,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   bool _optimizedRouteEnabled = false;
   ({double lat, double lon})? _lastPosition;
   ({double lat, double lon})? _destination;
+  RouteMode _mode = RouteMode.day;
 
   Future<void> _load() async {
     state = const HomeLoading();
@@ -62,6 +69,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
     final locationService = _ref.read(locationServiceProvider);
     final routeService = _ref.read(routeSearchServiceProvider);
     final analytics = _ref.read(analyticsServiceProvider);
+
+    // 「オフライン投稿キュー」機能: ホーム画面の読み込み（起動時・リトライ時）は
+    // ネットワークが復旧しているタイミングの目安になるため、ここで溜まった投稿の
+    // 再送を試みる（ベストエフォート。失敗してもホーム画面表示自体は継続する）。
+    final submissionService = _ref.read(spotSubmissionServiceProvider);
+    if (submissionService is QueueingSpotSubmissionService) {
+      unawaited(submissionService.flushQueue());
+    }
 
     final permission = await locationService.requestPermission();
     if (permission != LocationPermissionState.granted) {
@@ -84,6 +99,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         shadeWeight: _optimizedRouteEnabled ? _optimizedShadeWeight : _defaultShadeWeight,
         destLat: destination?.lat,
         destLon: destination?.lon,
+        mode: _mode,
       );
       if (route == null) {
         state = const HomeError('付近に安心ルートを見つけられませんでした');
@@ -118,6 +134,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
   Future<void> clearDestination() async {
     _destination = null;
     await _load();
+  }
+
+  /// 日中/夜間モードの切り替え。夜間は明るさ、日中は日陰を評価軸として優先する
+  /// （`RouteSearchService.searchNearbyComfortRoute`の`mode`参照）。
+  Future<void> setMode(RouteMode mode) async {
+    if (_mode == mode) return;
+    _mode = mode;
+    if (_lastPosition != null) {
+      await _load();
+    }
   }
 
   /// 「詳細ルート最適化」トグル。プレミアム未契約の場合は何もせず`false`を返す

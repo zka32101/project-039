@@ -7,6 +7,9 @@ const _shadeTypeLabels = {
   'tree': '木陰',
   'arcade': 'アーケード',
   'rain_shelter': '雨よけ',
+  'uneven_ground': '段差・でこぼこ',
+  'dark_stairs': '暗い階段',
+  'narrow_sidewalk': '狭い歩道',
 };
 
 const _brightnessReasonLabels = {
@@ -27,11 +30,25 @@ class FirestoreSpotListService implements SpotListService {
   @override
   Future<List<SpotSummary>> fetchRecentApproved({int limit = 20}) async {
     final results = await Future.wait([
-      _fetchCollection('shadeSpots', SpotVoteKind.shade, limit),
-      _fetchCollection('brightnessSpots', SpotVoteKind.brightness, limit),
+      _fetchCollection('shadeSpots', SpotVoteKind.shade, limit, statusFilter: 'approved'),
+      _fetchCollection('brightnessSpots', SpotVoteKind.brightness, limit, statusFilter: 'approved'),
     ]);
 
-    final merged = [...results[0], ...results[1]]
+    return _mergeNewestFirst(results, limit);
+  }
+
+  @override
+  Future<List<SpotSummary>> fetchOwnSubmissions(String submitterId, {int limit = 50}) async {
+    final results = await Future.wait([
+      _fetchCollection('shadeSpots', SpotVoteKind.shade, limit, submitterId: submitterId),
+      _fetchCollection('brightnessSpots', SpotVoteKind.brightness, limit, submitterId: submitterId),
+    ]);
+
+    return _mergeNewestFirst(results, limit);
+  }
+
+  List<SpotSummary> _mergeNewestFirst(List<List<SpotSummary>> results, int limit) {
+    final merged = results.expand((r) => r).toList()
       ..sort((a, b) {
         final aTime = a.createdAt;
         final bTime = b.createdAt;
@@ -42,13 +59,24 @@ class FirestoreSpotListService implements SpotListService {
     return merged.take(limit).toList();
   }
 
-  Future<List<SpotSummary>> _fetchCollection(String collection, SpotVoteKind kind, int limit) async {
-    final snapshot = await _firestore
-        .collection(collection)
-        .where('status', isEqualTo: 'approved')
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .get();
+  /// [statusFilter]指定時（一般公開の「投稿を確認」画面）は`status`＋`createdAt`降順の
+  /// 複合インデックスを使う。[submitterId]指定時（マイページ）は既存の
+  /// `submitterId`＋`createdAt`昇順インデックス（レート制限判定用に既存）をそのまま流用し、
+  /// 新しいインデックス定義を追加せずに済ませる（Dart側で降順に並べ替える）。
+  Future<List<SpotSummary>> _fetchCollection(
+    String collection,
+    SpotVoteKind kind,
+    int limit, {
+    String? statusFilter,
+    String? submitterId,
+  }) async {
+    Query<Map<String, dynamic>> query = _firestore.collection(collection);
+    if (statusFilter != null) {
+      query = query.where('status', isEqualTo: statusFilter).orderBy('createdAt', descending: true);
+    } else if (submitterId != null) {
+      query = query.where('submitterId', isEqualTo: submitterId).orderBy('createdAt');
+    }
+    final snapshot = await query.limit(limit).get();
 
     return snapshot.docs.map((doc) {
       final data = doc.data();
@@ -63,6 +91,7 @@ class FirestoreSpotListService implements SpotListService {
         votes: (data['votes'] as num?)?.toInt() ?? 0,
         reportCount: (data['reportCount'] as num?)?.toInt() ?? 0,
         createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
+        status: data['status'] as String? ?? 'approved',
       );
     }).toList();
   }

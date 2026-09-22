@@ -3,9 +3,12 @@
 /// 閲覧できるUIが無かった。本モデルはNGワードフィルタで承認済み（`moderationStatus == 'approved'`）
 /// のコメントを一覧表示する「みんなの声」画面（`SpotCommentsListView`）向け。
 class SpotComment {
-  const SpotComment({required this.id, required this.text, this.createdAt});
+  const SpotComment({required this.id, required this.text, this.createdAt, this.likeCount = 0});
 
   final String id;
   final String text;
   final DateTime? createdAt;
+
+  /// 軽量リアクション（共感ボタン）の累計数（`functions/index.js`の`reactToComment`参照）。
+  final int likeCount;
 }

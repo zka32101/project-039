@@ -25,12 +25,15 @@ abstract class RouteSearchService {
   ///
   /// [destLat]/[destLon] は「目的地入力」画面（`DestinationPickerView`）でユーザーが
   /// 選んだ座標。未指定の場合はAha Moment用のデモ目的地（実装依存）を使う。
+  ///
+  /// [mode] は日中(day)/夜間(night)モード。夜間は明るさ、日中は日陰を評価軸として優先する。
   Future<RouteResult?> searchNearbyComfortRoute({
     required double currentLat,
     required double currentLon,
     double shadeWeight = 0.6,
     double? destLat,
     double? destLon,
+    RouteMode mode = RouteMode.day,
   });
 }
 
@@ -49,7 +52,11 @@ class LocalRouteSearchService implements RouteSearchService {
     double shadeWeight = 0.6,
     double? destLat,
     double? destLon,
+    RouteMode mode = RouteMode.day,
   }) async {
+    // 【既知の制約】オンデバイス版はサーバー版と異なり、影・明るさスコアを分離して
+    // 保持していないため、modeによる評価軸の切り替えには未対応（常に統合comfortScoreを使う）。
+    // オフライン時のフォールバック専用経路のため、実接続時は`RemoteRouteSearchService`が使われる。
     final graph = await _repository.loadGraph();
     if (graph.nodeById.isEmpty) return null;
 
@@ -61,12 +68,13 @@ class LocalRouteSearchService implements RouteSearchService {
         // （=一番「歩きがいのある」区間を提示する）。
         : _farthestNodeId(graph, originId);
 
-    return engine.searchRoute(
+    final result = engine.searchRoute(
       graph: graph,
       originNodeId: originId,
       destNodeId: destId,
       shadeWeight: shadeWeight,
     );
+    return result?.copyWith(mode: mode);
   }
 
   String _nearestNodeId(RoadGraph graph, double lat, double lon) {

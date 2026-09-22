@@ -13,6 +13,7 @@ import '../firebase/firebase_remote_config_service.dart';
 import '../firebase/firebase_route_search_service.dart';
 import '../firebase/firebase_spot_comment_service.dart';
 import '../firebase/firebase_spot_list_service.dart';
+import '../firebase/firebase_spot_reaction_service.dart';
 import '../firebase/firebase_spot_submission_service.dart';
 import '../firebase/firebase_spot_vote_service.dart';
 import '../firebase/firebase_verification_service.dart';
@@ -24,11 +25,15 @@ import '../services/location_service.dart';
 import '../services/notification_preference_storage.dart';
 import '../services/onboarding_storage.dart';
 import '../services/push_notification_service.dart';
+import '../services/queueing_spot_submission_service.dart';
 import '../services/remote_config_service.dart';
 import '../services/road_network_repository.dart';
 import '../services/route_search_service.dart';
 import '../services/spot_comment_service.dart';
 import '../services/spot_list_service.dart';
+import '../services/spot_photo_upload_service.dart';
+import '../services/spot_reaction_service.dart';
+import '../services/spot_submission_queue.dart';
 import '../services/spot_submission_service.dart';
 import '../services/spot_vote_service.dart';
 import '../services/subscription_service.dart';
@@ -63,17 +68,24 @@ final remoteConfigServiceProvider = Provider<RemoteConfigService>((ref) {
       : LocalRemoteConfigService();
 });
 
+final spotSubmissionQueueProvider = Provider<SpotSubmissionQueue>((ref) {
+  return SharedPreferencesSpotSubmissionQueue();
+});
+
 final spotSubmissionServiceProvider = Provider<SpotSubmissionService>((ref) {
   final repository = ref.watch(roadNetworkRepositoryProvider);
   final remoteConfig = ref.watch(remoteConfigServiceProvider);
 
   if (ref.watch(firebaseAvailableProvider)) {
-    return FirestoreSpotSubmissionService(
+    final firestoreService = FirestoreSpotSubmissionService(
       FirebaseFirestore.instance,
       repository,
       ref.watch(authServiceProvider),
       moderationConfigProvider: () => remoteConfig.moderationConfig,
     );
+    // 「オフライン投稿キュー」機能: Firestore接続時のみ、送信失敗を端末内キューへ
+    // 保存して自動再送するデコレータを被せる（Local実装は元々完全オフライン動作のため不要）。
+    return QueueingSpotSubmissionService(firestoreService, repository, ref.watch(spotSubmissionQueueProvider));
   }
   return LocalSpotSubmissionService(
     repository,
@@ -126,6 +138,19 @@ final spotVoteServiceProvider = Provider<SpotVoteService>((ref) {
   return ref.watch(firebaseAvailableProvider)
       ? FirestoreSpotVoteService(FirebaseFunctions.instance)
       : LocalSpotVoteService();
+});
+
+// 「投稿への写真添付」機能: 実際のアップロード実装（`image_picker`/`firebase_storage`が必要）は
+// ローカル環境での追加待ち（`spot_photo_upload_service.dart`のコメント参照）。
+// DIの配線自体は用意しておき、実装ができ次第この行だけ差し替えればよいようにしている。
+final spotPhotoUploadServiceProvider = Provider<SpotPhotoUploadService>((ref) {
+  return UnavailableSpotPhotoUploadService();
+});
+
+final spotReactionServiceProvider = Provider<SpotReactionService>((ref) {
+  return ref.watch(firebaseAvailableProvider)
+      ? FirestoreSpotReactionService(FirebaseFunctions.instance)
+      : LocalSpotReactionService();
 });
 
 final spotListServiceProvider = Provider<SpotListService>((ref) {

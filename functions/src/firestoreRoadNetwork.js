@@ -49,6 +49,20 @@ export async function loadBuildings(db) {
  * 経路探索時の「安心スコア」= baseShadowScoreとユーザー投稿集計値の統合に使う。
  */
 export async function loadRoadSegmentScores(db) {
+  const detailed = await loadRoadSegmentScoreDetails(db);
+  const scores = new Map();
+  for (const [id, { comfortScore }] of detailed) {
+    scores.set(id, comfortScore);
+  }
+  return scores;
+}
+
+/**
+ * loadRoadSegmentScores()の内訳版。影スコアと明るさスコアを分離したまま返す。
+ * 日中モード（日陰優先）/夜間モード（明るさ優先）の経路探索切り替えに使う
+ * （`index.js`の`searchRoute`参照。日中は影を評価軸に、夜間は明るさを評価軸にする）。
+ */
+export async function loadRoadSegmentScoreDetails(db) {
   const snap = await db.collection('roadSegments').get();
   const scores = new Map();
   for (const doc of snap.docs) {
@@ -57,7 +71,7 @@ export async function loadRoadSegmentScores(db) {
     const brightness = d.aggregatedBrightnessScore ?? 0;
     // RoadSegment.comfortScore（Flutter側）と同じ定義: 影と明るさの単純平均
     const comfortScore = Math.min(1, Math.max(0, (shade + brightness) / 2));
-    scores.set(doc.id, comfortScore);
+    scores.set(doc.id, { shade, brightness, comfortScore });
   }
   return scores;
 }
