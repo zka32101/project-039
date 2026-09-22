@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/spot_comment.dart';
 import '../../models/spot_summary.dart';
+import '../../services/spot_reaction_service.dart';
 import '../../services/spot_vote_service.dart';
 import '../../viewmodels/providers.dart';
 
@@ -178,6 +179,35 @@ class _SpotCommentsSheetState extends ConsumerState<_SpotCommentsSheet> {
   List<SpotComment>? _comments;
   bool _hasError = false;
 
+  // `SpotCommentsListView`と同じ軽量リアクション（共感ボタン）用のローカル状態。
+  final _likeCountOverrides = <String, int>{};
+  final _reactedIds = <String>{};
+  final _reactingIds = <String>{};
+
+  Future<void> _react(SpotComment comment) async {
+    if (_reactingIds.contains(comment.id) || _reactedIds.contains(comment.id)) return;
+    setState(() => _reactingIds.add(comment.id));
+    try {
+      final likeCount = await ref.read(spotReactionServiceProvider).react(comment.id);
+      if (!mounted) return;
+      setState(() {
+        _likeCountOverrides[comment.id] = likeCount;
+        _reactedIds.add(comment.id);
+      });
+    } on SpotReactionException catch (e) {
+      if (!mounted) return;
+      if (e.message.contains('すでに共感済み')) {
+        setState(() => _reactedIds.add(comment.id));
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('共感に失敗しました')));
+    } finally {
+      if (mounted) setState(() => _reactingIds.remove(comment.id));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -237,11 +267,24 @@ class _SpotCommentsSheetState extends ConsumerState<_SpotCommentsSheet> {
       shrinkWrap: true,
       itemCount: comments.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.forum_outlined),
-        title: Text(comments[index].text),
-      ),
+      itemBuilder: (context, index) {
+        final comment = comments[index];
+        final likeCount = _likeCountOverrides[comment.id] ?? comment.likeCount;
+        final hasReacted = _reactedIds.contains(comment.id);
+        final isReacting = _reactingIds.contains(comment.id);
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.forum_outlined),
+          title: Text(comment.text),
+          trailing: isReacting
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : TextButton.icon(
+                  onPressed: hasReacted ? null : () => _react(comment),
+                  icon: Icon(hasReacted ? Icons.favorite : Icons.favorite_border, size: 18),
+                  label: Text('$likeCount'),
+                ),
+        );
+      },
     );
   }
 }

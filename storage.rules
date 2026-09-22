@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// あんしんみち Cloud Storage セキュリティルール（ドラフト）。
+// 「投稿への写真添付」機能向け。firestore.rulesと同じ「クライアントを信用しない」方針。
+// 【重要】このセッションはFirebaseプロジェクトへのネットワークアクセスが無いため、
+// `firebase emulators:exec --only storage`等での実検証は行えていない。デプロイ前に必ず
+// ローカル/CIで検証すること（`firebase.json`の`storage.rules`参照）。
+//
+// パス構成: spotPhotos/{submitterId}/{spotId}.jpg
+//   - submitterIdをパスに含めることで「自分がアップロードした写真のパスしか書けない」
+//     （firestore.rulesの`submitterId == request.auth.uid`と同じ考え方をパスで表現）
+//   - 読み取りは誰でも可（地図・投稿一覧での表示に必要、shadeSpots/brightnessSpotsのreadと同じ）
+//   - ファイルサイズ・形式を制限し、任意ファイルのアップロード先として悪用されるリスクを抑える
+//     （5MB上限、image/*のみ）
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /spotPhotos/{submitterId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.uid == submitterId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if false; // 投稿の削除と同様、承認フロー上は取り消し不可（moderationで対応）
+    }
+  }
+}

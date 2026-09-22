@@ -1,5 +1,17 @@
 import 'road_segment.dart';
 
+/// 経路探索の時間帯モード。日中は日陰、夜間は明るさを評価軸として優先する
+/// （`functions/index.js`の`searchRoute`の`mode`パラメータに対応）。
+enum RouteMode {
+  day,
+  night;
+
+  String get wireValue => name;
+
+  static RouteMode fromWireValue(String? value) =>
+      value == 'night' ? RouteMode.night : RouteMode.day;
+}
+
 /// searchRoute() の結果。ホーム画面の「安心ルート即表示」に使う。
 class RouteResult {
   const RouteResult({
@@ -8,6 +20,8 @@ class RouteResult {
     required this.distanceM,
     required this.averageComfortScore,
     this.isFromCache = false,
+    this.mode = RouteMode.day,
+    this.alternativeRoute,
   });
 
   final List<RoadNode> nodes;
@@ -22,12 +36,22 @@ class RouteResult {
   /// （バックログ「オフライン地図の実キャッシュ」対応、`RouteResultCache`参照）。
   final bool isFromCache;
 
-  RouteResult copyWith({bool? isFromCache}) => RouteResult(
+  /// このルートを計算した際のモード（日中/夜間）。
+  final RouteMode mode;
+
+  /// 「複数ルート提案」機能: このルートと異なる場合のみ、最短優先の代替ルートが入る
+  /// （サーバー側`sameAsRecommended`がtrueの場合や、まだ対応していない実装ではnull）。
+  /// ネストはこの1段のみ（代替ルート自身がさらに代替ルートを持つことはない）。
+  final RouteResult? alternativeRoute;
+
+  RouteResult copyWith({bool? isFromCache, RouteMode? mode}) => RouteResult(
         nodes: nodes,
         segments: segments,
         distanceM: distanceM,
         averageComfortScore: averageComfortScore,
         isFromCache: isFromCache ?? this.isFromCache,
+        mode: mode ?? this.mode,
+        alternativeRoute: alternativeRoute,
       );
 
   /// オフラインキャッシュ用のシリアライズ。`isFromCache`自体は保存しない
@@ -37,6 +61,8 @@ class RouteResult {
         'segments': segments.map((s) => s.toJson()).toList(),
         'distanceM': distanceM,
         'averageComfortScore': averageComfortScore,
+        'mode': mode.wireValue,
+        'alternativeRoute': alternativeRoute?.toJson(),
       };
 
   factory RouteResult.fromJson(Map<String, dynamic> json) => RouteResult(
@@ -48,5 +74,9 @@ class RouteResult {
             .toList(),
         distanceM: (json['distanceM'] as num).toDouble(),
         averageComfortScore: (json['averageComfortScore'] as num).toDouble(),
+        mode: RouteMode.fromWireValue(json['mode'] as String?),
+        alternativeRoute: json['alternativeRoute'] != null
+            ? RouteResult.fromJson(Map<String, dynamic>.from(json['alternativeRoute'] as Map))
+            : null,
       );
 }

@@ -46,10 +46,17 @@ service cloud.firestore {
 
     match /shadeSpots/{spotId} {
       allow read: if true;
+      // 'uneven_ground'/'dark_stairs'/'narrow_sidewalk'は「危険・困りごと」系の投稿種別
+      // （日陰ではなく歩行の安全性に関する情報。`SpotType.isHazardReport`参照）。
+      // photoUrlは「投稿への写真添付」機能（任意）。実際のファイルはCloud Storage
+      // （`storage.rules`参照、`spotPhotos/{submitterId}/...`配下のみ本人がアップロード可）に
+      // 置かれ、ここにはダウンロードURLのみを保存する。未添付の場合はフィールド自体を省略できる。
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
         && request.resource.data.status == 'pending'
-        && request.resource.data.type in ['tree', 'arcade', 'rain_shelter'];
+        && request.resource.data.type in
+          ['tree', 'arcade', 'rain_shelter', 'uneven_ground', 'dark_stairs', 'narrow_sidewalk']
+        && (!('photoUrl' in request.resource.data) || request.resource.data.photoUrl is string);
       // 'pending'→'approved'等の遷移・投票数の変更はCloud Functions（モデレーション）のみが行う
       allow update, delete: if false;
     }
@@ -59,11 +66,13 @@ service cloud.firestore {
       // reasonTypeは「夜の明るさ」('dark')と「人通りが少ない」('low_foot_traffic')投稿を区別する。
       // 'low_foot_traffic'は主観的・偏見の影響を受けやすい投稿種別のため、Cloud Functions
       // （handleSpotCreated）が地域のモデレーション設定に関わらず常に人力承認へ回す（荒らし対策）。
+      // photoUrlについては`shadeSpots`と同じ（任意・Cloud Storageのダウンロードurlのみ）。
       allow create: if request.auth != null
         && request.resource.data.submitterId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.brightnessLevel in ['dark', 'normal', 'bright']
-        && request.resource.data.reasonType in ['dark', 'low_foot_traffic'];
+        && request.resource.data.reasonType in ['dark', 'low_foot_traffic']
+        && (!('photoUrl' in request.resource.data) || request.resource.data.photoUrl is string);
       allow update, delete: if false;
     }
 
@@ -102,6 +111,13 @@ service cloud.firestore {
     // 同一ユーザーが同一投稿へ二重投票することを防ぐための記録専用ドキュメントで、
     // Cloud Functions（Admin SDK、本ルールの制約を受けない）の`voteSpot`のみが読み書きする。
     match /spotVotes/{voteId} {
+      allow read, write: if false;
+    }
+
+    // コメントへの軽量リアクション（共感ボタン）の投稿済み記録（`functions/index.js`の
+    // `reactToComment`参照）。同一ユーザーが同一コメントへ二重にリアクションすることを防ぐための
+    // 記録専用ドキュメントで、Cloud Functions（Admin SDK、本ルールの制約を受けない）のみが読み書きする。
+    match /commentReactions/{reactionId} {
       allow read, write: if false;
     }
 

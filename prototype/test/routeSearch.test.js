@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../src/buildGraph.js';
-import { searchRoute } from '../src/routeSearch.js';
+import { searchRoute, searchRouteAlternatives } from '../src/routeSearch.js';
 
 // シンプルな一直線グラフ: A - B - C
 function makeLinearGraph() {
@@ -53,4 +53,48 @@ test('searchRoute: 200回連続実行しても実用速度(平均10ms未満)に�
   for (let i = 0; i < 200; i++) searchRoute(graph, new Map(), 'A', 'C');
   const avgMs = (performance.now() - start) / 200;
   assert.ok(avgMs < 10, `avg was ${avgMs}ms`);
+});
+
+// ひし形グラフ: A-B-D（日陰あり・遠回り）と A-C-D（日陰なし・近道）の2択がある構成
+function makeDiamondGraph() {
+  return buildGraph({
+    nodes: [
+      { id: 'A', lat: 35.0, lon: 139.0 },
+      { id: 'B', lat: 35.001, lon: 139.001 },
+      { id: 'C', lat: 35.0005, lon: 139.0 },
+      { id: 'D', lat: 35.002, lon: 139.0 },
+    ],
+    roads: [
+      { id: 'viaB', nodeIds: ['A', 'B', 'D'] },
+      { id: 'viaC', nodeIds: ['A', 'C', 'D'] },
+    ],
+  });
+}
+
+test('searchRouteAlternatives: 安心優先ルートと最短ルートが異なる場合は両方返す', () => {
+  const graph = makeDiamondGraph();
+  const shadedEdgeIds = graph.edges.filter((e) => e.roadId === 'viaB').map((e) => e.id);
+  const shadowScores = new Map(shadedEdgeIds.map((id) => [id, 1]));
+
+  const result = searchRouteAlternatives(graph, shadowScores, 'A', 'D', { shadeWeight: 0.9 });
+
+  assert.ok(result);
+  assert.equal(result.sameAsRecommended, false);
+  assert.deepEqual(result.recommended.path, ['A', 'B', 'D']); // 日陰優先なので遠回りでもBルート
+  assert.deepEqual(result.shortest.path, ['A', 'C', 'D']); // 純粋な距離優先ならCルート
+});
+
+test('searchRouteAlternatives: 日陰の差が無ければ同一ルートとしてフラグが立つ', () => {
+  const graph = makeLinearGraph();
+  const result = searchRouteAlternatives(graph, new Map(), 'A', 'C');
+
+  assert.ok(result);
+  assert.equal(result.sameAsRecommended, true);
+  assert.deepEqual(result.recommended.path, result.shortest.path);
+});
+
+test('searchRouteAlternatives: 経路が存在しない場合はnullを返す', () => {
+  const graph = makeLinearGraph();
+  const result = searchRouteAlternatives(graph, new Map(), 'A', 'Z');
+  assert.equal(result, null);
 });

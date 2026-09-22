@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/map_config.dart';
 import '../../models/route_result.dart';
 import '../../theme/app_theme.dart';
 import '../../viewmodels/home_view_model.dart';
+import '../../viewmodels/providers.dart';
 import '../../widgets/primary_button.dart';
 import '../announcements/announcements_list_view.dart';
 import '../comments/spot_comments_list_view.dart';
 import '../destination/destination_picker_view.dart';
+import '../favorites/favorite_routes_view.dart';
 import '../paint/paint_submission_view.dart';
 import '../paywall/paywall_view.dart';
 import '../settings/settings_view.dart';
+import '../spots/my_submissions_view.dart';
 import '../spots/spots_list_view.dart';
 import 'widgets/real_map_route_view.dart';
 import 'widgets/schematic_map_view.dart';
@@ -46,6 +50,24 @@ class HomeView extends ConsumerWidget {
             tooltip: 'お知らせ',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AnnouncementsListView()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.star_border_outlined),
+            tooltip: 'お気に入り',
+            onPressed: () async {
+              final selected = await Navigator.of(context).push<({double lat, double lon})>(
+                MaterialPageRoute(builder: (_) => const FavoriteRoutesView()),
+              );
+              if (selected == null) return;
+              await ref.read(homeViewModelProvider.notifier).setDestination(selected.lat, selected.lon);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'マイページ',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MySubmissionsView()),
             ),
           ),
           IconButton(
@@ -317,8 +339,140 @@ class _ReadyView extends ConsumerWidget {
             value: isOptimizedRouteEnabled,
             onChanged: (value) => _handleOptimizedToggle(context, ref, value),
           ),
+          const SizedBox(height: 8),
+          _ModeToggleRow(mode: route.mode),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _shareRoute(context, route, hasCustomDestination),
+                  icon: const Icon(Icons.ios_share_outlined),
+                  label: const Text('ルート情報をコピー'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _saveFavorite(context, ref, hasCustomDestination),
+                  icon: const Icon(Icons.star_border_outlined),
+                  label: const Text('お気に入り登録'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  /// 「経路の共有」機能: ルート概要をクリップボードへコピーする。
+  /// 【スコープ】ネイティブの共有シート（`share_plus`パッケージ）はこのセッションが
+  /// `flutter pub get`を検証できないため見送り、Flutter SDK標準の`Clipboard`のみで実装。
+  /// ローカル環境で`share_plus`を追加すれば`Share.share(text)`に差し替えるだけで済む。
+  Future<void> _shareRoute(BuildContext context, RouteResult route, bool hasCustomDestination) async {
+    final comfortPercent = (route.averageComfortScore * 100).round();
+    final text = '【あんしんみち】${hasCustomDestination ? "選んだ目的地までの" : "近くの"}安心ルート\n'
+        '距離: 約${route.distanceM.round()}m ・ 安心スコア $comfortPercent%';
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('ルート情報をコピーしました')),
+    );
+  }
+
+  /// 「お気に入りルート保存」機能: 現在の目的地を端末内に保存し、次回ホーム画面から
+  /// ワンタップで呼び出せるようにする（`FavoriteRoutesView`参照）。
+  Future<void> _saveFavorite(BuildContext context, WidgetRef ref, bool hasCustomDestination) async {
+    if (!hasCustomDestination) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('先に「目的地を選ぶ」でお気に入りにしたい場所を選んでください')),
+      );
+      return;
+    }
+    final label = await showDialog<String>(
+      context: context,
+      builder: (context) => const _FavoriteNameDialog(),
+    );
+    if (label == null || label.trim().isEmpty) return;
+    final destination = ref.read(homeViewModelProvider.notifier).currentDestination;
+    if (destination == null) return;
+    await ref.read(favoriteRouteServiceProvider).add(
+          label: label.trim(),
+          lat: destination.lat,
+          lon: destination.lon,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('「${label.trim()}」をお気に入りに登録しました')),
+    );
+  }
+}
+
+class _FavoriteNameDialog extends StatefulWidget {
+  const _FavoriteNameDialog();
+
+  @override
+  State<_FavoriteNameDialog> createState() => _FavoriteNameDialogState();
+}
+
+class _FavoriteNameDialogState extends State<_FavoriteNameDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('お気に入りの名前'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(hintText: '例: 自宅、職場'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 「日中/夜間モード切替」機能: `HomeViewModel.setMode()`（実装済みだが従来はUIから
+/// 呼び出す手段が無かった）を呼び出すトグルボタン。日中は日陰、夜間は明るさを
+/// 評価軸として優先する（`functions/index.js`の`searchRoute`の`mode`参照）。
+class _ModeToggleRow extends ConsumerWidget {
+  const _ModeToggleRow({required this.mode});
+  final RouteMode mode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      children: [
+        Icon(
+          mode == RouteMode.night ? Icons.nightlight_outlined : Icons.wb_sunny_outlined,
+          size: 20,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(width: 8),
+        const Text('経路探索モード'),
+        const Spacer(),
+        SegmentedButton<RouteMode>(
+          segments: const [
+            ButtonSegment(value: RouteMode.day, label: Text('日中'), icon: Icon(Icons.wb_sunny_outlined)),
+            ButtonSegment(value: RouteMode.night, label: Text('夜間'), icon: Icon(Icons.nightlight_outlined)),
+          ],
+          selected: {mode},
+          onSelectionChanged: (selection) => ref.read(homeViewModelProvider.notifier).setMode(selection.first),
+        ),
+      ],
     );
   }
 }

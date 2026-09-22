@@ -99,6 +99,17 @@ export function decideRateLimitTransition(existing, nowMs, windowMs, maxRequests
 export const COMMENT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 直近10分間（投稿側のRATE_LIMIT_WINDOW_MSと同じ）
 export const COMMENT_RATE_LIMIT_MAX_REQUESTS = 10; // コメントは投稿より軽量な操作のため、投稿より緩めの上限にする
 
+// ------------------------------------------------------------------
+// spotComments への軽量リアクション（共感ボタン）の不正利用対策
+//
+// 確認投票／通報（voteSpot）ほど重い意味を持たない気軽な操作のため、上限は緩め。
+// それでも無制限にすると「Botで特定コメントの共感数を吊り上げる」荒らしが可能なため、
+// 他の操作と同じ固定ウィンドウ方式のレート制限を適用する。
+// ------------------------------------------------------------------
+
+export const REACTION_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 直近10分間
+export const REACTION_RATE_LIMIT_MAX_REQUESTS = 30; // 気軽な操作のため、コメント投稿より緩めの上限
+
 /**
  * `key`（呼び出し元を一意に識別する文字列、例: `searchRoute:${uid}`）ごとのレート制限を、
  * Firestoreの`rateLimits/{key}`ドキュメント1件のカウンタで判定・更新する。

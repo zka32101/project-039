@@ -10,9 +10,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SpotTypeSelector(
-            selected: null,
-            onSelected: (type) => selected = type,
+          // SpotTypeSelectorはshrinkWrap+NeverScrollableScrollPhysicsのGridViewのため、
+          // 実際の埋め込み先（_TypeSelectionStep）と同様にスクロール可能な親が必要
+          // （投稿種別が8種になり、Scaffold.body直下では画面高に収まらない場合がある）。
+          body: SingleChildScrollView(
+            child: SpotTypeSelector(
+              selected: null,
+              onSelected: (type) => selected = type,
+            ),
           ),
         ),
       ),

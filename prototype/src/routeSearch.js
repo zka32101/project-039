@@ -64,3 +64,26 @@ export function searchRoute(graph, shadowScores, originNodeId, destNodeId, weigh
 
   return { path, distanceM, cost: dist.get(destNodeId) };
 }
+
+/**
+ * 「安心優先」と「最短優先」の2ルートを1回の呼び出しでまとめて求める。
+ * 内部的には shadeWeight を変えて searchRoute() を2回呼ぶだけ（アルゴリズム自体は共通）。
+ * 同一経路になった場合は sameAsRecommended: true を立て、クライアント側で
+ * 「もう1案」を重複表示しなくて済むようにする。
+ * @param {ReturnType<import('./buildGraph.js').buildGraph>} graph
+ * @param {Map<string, number>} shadowScores
+ * @param {string} originNodeId
+ * @param {string} destNodeId
+ * @param {{shadeWeight?: number}} [weightPrefs] recommendedルートのshadeWeight（既定0.6）
+ * @returns {{recommended: object, shortest: object, sameAsRecommended: boolean} | null}
+ */
+export function searchRouteAlternatives(graph, shadowScores, originNodeId, destNodeId, weightPrefs = {}) {
+  const shadeWeight = weightPrefs.shadeWeight ?? 0.6;
+  const recommended = searchRoute(graph, shadowScores, originNodeId, destNodeId, { shadeWeight });
+  if (!recommended) return null;
+
+  const shortest = searchRoute(graph, shadowScores, originNodeId, destNodeId, { shadeWeight: 0 });
+  const sameAsRecommended = !!shortest && shortest.path.join(',') === recommended.path.join(',');
+
+  return { recommended, shortest: shortest ?? recommended, sameAsRecommended };
+}

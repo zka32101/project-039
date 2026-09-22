@@ -44,6 +44,7 @@ class FirestoreSpotCommentService implements SpotCommentService {
         id: doc.id,
         text: data['text'] as String? ?? '',
         createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
+        likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
       );
     }).toList();
   }

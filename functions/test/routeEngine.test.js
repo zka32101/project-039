@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../src/buildGraph.js';
-import { searchRoute } from '../src/routeSearch.js';
+import { searchRoute, searchRouteAlternatives } from '../src/routeSearch.js';
 
 test('buildGraph→searchRoute: 一直線の経路を発見できる', () => {
   const graph = buildGraph({
@@ -19,4 +19,20 @@ test('buildGraph→searchRoute: 一直線の経路を発見できる', () => {
   const result = searchRoute(graph, new Map(), 'A', 'C');
   assert.ok(result);
   assert.deepEqual(result.path, ['A', 'B', 'C']);
+});
+
+test('buildGraph→searchRouteAlternatives: 移植が壊れていないかのスモークテスト', () => {
+  const graph = buildGraph({
+    nodes: [
+      { id: 'A', lat: 35.0, lon: 139.0 },
+      { id: 'B', lat: 35.001, lon: 139.0 },
+      { id: 'C', lat: 35.002, lon: 139.0 },
+    ],
+    roads: [{ id: 'r1', nodeIds: ['A', 'B', 'C'] }],
+  });
+
+  const result = searchRouteAlternatives(graph, new Map(), 'A', 'C');
+  assert.ok(result);
+  assert.deepEqual(result.recommended.path, ['A', 'B', 'C']);
+  assert.equal(result.sameAsRecommended, true);
 });

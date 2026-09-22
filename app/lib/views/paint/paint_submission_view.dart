@@ -199,15 +199,21 @@ class _TypeSelectionStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('何を投稿しますか？', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('道の様子を選んでください'),
-        const SizedBox(height: 20),
-        SpotTypeSelector(selected: null, onSelected: onSelected),
-      ],
+    // 危険・困りごと系の追加で投稿種別が8種に増え、画面高によっては折り返し後の行が
+    // 収まりきらなくなったため、SingleChildScrollViewでスクロール可能にする
+    // （SpotTypeSelector自体はshrinkWrap+NeverScrollableScrollPhysicsのため、
+    // 外側にスクロール領域が無いと画面に収まらない分がレイアウトされない）。
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('何を投稿しますか？', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 4),
+          const Text('道の様子を選んでください'),
+          const SizedBox(height: 20),
+          SpotTypeSelector(selected: null, onSelected: onSelected),
+        ],
+      ),
     );
   }
 }
@@ -334,6 +340,7 @@ class _SuccessStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isImmediate = reflectMode == ReflectMode.immediate;
+    final isQueuedOffline = reflectMode == ReflectMode.queuedOffline;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -341,7 +348,11 @@ class _SuccessStep extends StatelessWidget {
           CheckmarkBurstAnimation(color: type.color),
           const SizedBox(height: 20),
           Text(
-            isImmediate ? '地図に反映されました！' : '投稿ありがとうございます',
+            isImmediate
+                ? '地図に反映されました！'
+                : isQueuedOffline
+                    ? '電波復帰時に自動送信します'
+                    : '投稿ありがとうございます',
             style: Theme.of(context).textTheme.titleLarge,
             textAlign: TextAlign.center,
           ),
@@ -349,7 +360,9 @@ class _SuccessStep extends StatelessWidget {
           Text(
             isImmediate
                 ? 'あなたの投稿が、次にここを歩く誰かの安心につながります'
-                : '内容を確認のうえ、順次地図へ反映します（承認待ち）',
+                : isQueuedOffline
+                    ? '通信状況が悪いため、端末に保存しました。次回オンライン時に自動的に送信します'
+                    : '内容を確認のうえ、順次地図へ反映します（承認待ち）',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
