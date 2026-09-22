@@ -127,7 +127,7 @@ class _RoutePainter extends CustomPainter {
     var drawn = 0.0;
     var isDash = true;
     while (drawn < totalLength) {
-      final segmentLength = (isDash ? dashLength : gapLength).clamp(0.0, totalLength - drawn) as double;
+      final double segmentLength = (isDash ? dashLength : gapLength).clamp(0.0, totalLength - drawn);
       final segmentStart = start + direction * drawn;
       final segmentEnd = start + direction * (drawn + segmentLength);
       if (isDash) canvas.drawLine(segmentStart, segmentEnd, paint);
