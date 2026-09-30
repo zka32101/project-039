@@ -1,13 +1,10 @@
 name: Deploy Cloud Functions
 
+# chikaba_kore（近場まっぷ）への統合が完了したため、自動デプロイを停止し手動実行のみ許可する。
+# 誤って本番Firebaseへ再デプロイしないよう、push/pull_requestトリガーは削除済み。
+# 詳細は README.md の「近場まっぷへの統合について」を参照。
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'functions/**'
-      - 'app/firestore.rules'
-      - 'app/firestore.indexes.json'
-      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:

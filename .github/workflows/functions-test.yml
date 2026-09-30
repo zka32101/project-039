@@ -1,16 +1,9 @@
 name: Cloud Functions Tests
 
+# chikaba_kore（近場まっぷ）への統合が完了したため、自動実行を停止し手動実行のみ許可する。
+# 詳細は README.md の「近場まっぷへの統合について」を参照。
 on:
-  push:
-    branches: [ main, claude/** ]
-    paths:
-      - 'functions/**'
-      - '.github/workflows/functions-test.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'functions/**'
-      - '.github/workflows/functions-test.yml'
+  workflow_dispatch:
 
 jobs:
   test:

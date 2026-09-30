@@ -1,5 +1,15 @@
 # project-039 — あんしんみち
 
+> **近場まっぷへの統合について**
+>
+> 本アプリ「あんしんみち」の開発は終了し、姉妹アプリ [chikaba_kore（近場まっぷ）](https://github.com/zka32101/chikaba_kore)
+> へモード統合済みです（詳細は chikaba_kore の `docs/INTEGRATION_PLAN_ANSHINMICHI.md` /
+> `docs/PHASE3_MODE_INTEGRATION_DESIGN.md` を参照）。「安全ルート」モードとして
+> chikaba_kore内で今後も開発・保守が続きます。本リポジトリは参照用として残していますが、
+> 新規の開発は行いません。CI/CDワークフローは誤実行防止のため手動実行のみに変更済みです。
+>
+> 新しいIssue報告・機能提案は chikaba_kore 側で受け付けます。
+
 影・雨よけ・夜の明るさをユーザーが「塗る」投稿で地図化し、経路探索へ統合する実用ユーティリティアプリ。
 設計根拠は `anshinmichi_sekkei_v1_0.md` / `anshinmichi_code_handoff_v1_0.md`（社内台帳参照）。
 
